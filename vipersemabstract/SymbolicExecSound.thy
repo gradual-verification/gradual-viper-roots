@@ -1186,6 +1186,7 @@ lemma s2a_state_wf_empty :
   apply (simp add:s2a_state_wf_def s2a_store_wf_def s2a_heap_wf_def s2a_heap_typed_def uu_get empty_heap_def s2a_state_indep_def)
   by (simp add:SLit_def)
 
+
 lemma sinit_sound :
   assumes "sinit tys F Q"
   assumes "\<Lambda> = nth_option tys"

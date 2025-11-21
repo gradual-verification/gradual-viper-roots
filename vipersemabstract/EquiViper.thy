@@ -616,6 +616,10 @@ lemma predicate_body_good_case:
   using assms predicate_body_def
   by simp
 
+text \<open>Runtime check evaluation\<close>
+  
+(*definition eval_rtc :: "'a runtime_check \<Rightarrow> 'a equi_state \<Rightarrow> bool"
+  where*)
 
 
 

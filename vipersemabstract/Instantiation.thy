@@ -175,6 +175,7 @@ fun sat_set :: "('a, 'a virtual_state) ValueAndBasicState.interp \<Rightarrow> (
 
 datatype 'a custom =
   FieldAssign "('a equi_state, address) exp" field_ident "('a equi_state, 'a val) exp"
+  | Runtime "'a runtime_check"
 (* | Label label *)
 
 definition has_write_perm_only :: "'a virtual_state \<Rightarrow> (address \<times> field_ident) \<Rightarrow> bool" where
@@ -732,6 +733,7 @@ inductive red_custom_stmt :: "('a val, field_ident \<rightharpoonup> 'a val set)
   where
   RedFieldAssign: "\<lbrakk> r \<omega> = Some hl ; e \<omega> = Some v ; get_vm (get_state \<omega>) (hl, f) = 1; custom_context \<Delta> f = Some ty; v \<in> ty \<rbrakk>
   \<Longrightarrow> red_custom_stmt \<Delta> (FieldAssign r f e) \<omega> {set_state \<omega> (set_value (get_state \<omega>) (hl, f) v)}"
+  (* | RedRuntime: "red_custom_stmt \<Delta> (Runtime rtc) \<omega> {\<omega>}" *)
 (* | RedLabel: "red_custom_stmt \<Delta> (Label l) \<omega> {set_trace \<omega> ((get_trace \<omega>)(l \<mapsto> get_state \<omega>)) }" *)
 
 inductive_cases red_custom_stmt_FieldAssign[elim!]: "red_custom_stmt \<Delta> (FieldAssign r f e) \<omega> S"
@@ -1020,6 +1022,22 @@ definition make_semantic_assertion
   :: "('a, 'a virtual_state) interp \<Rightarrow> ((var \<rightharpoonup> vtyp) \<times> (field_name \<rightharpoonup> vtyp)) \<Rightarrow> (pure_exp, pure_exp atomic_assert) assert \<Rightarrow> 'a equi_state set"
   where
   "make_semantic_assertion \<Delta> F A = (\<langle>\<Delta>, snd F\<rangle> \<Turnstile> \<langle>A\<rangle>)"
+
+(*
+  compile takes runtime_stmt(stmt, runtime_check) as input
+  if runtime_check = Some(rtc) then
+    abs_stmt.seq (abs_stmt.custom.runtime rtc) stmt
+
+    runtime rtc;
+    stmt
+
+  forall r in rtcs. r.check w
+------------------------------
+  <runtime rtcs, w> \<longrightarrow> {w}
+
+  else
+    stmt
+*)
 
 fun compile (* :: "('a, 'a virtual_state) interp \<Rightarrow> (field_name \<rightharpoonup> vtyp) \<Rightarrow> stmt \<Rightarrow> ('a equi_state, 'a val, 'a custom) abs_stmt" *)
   where

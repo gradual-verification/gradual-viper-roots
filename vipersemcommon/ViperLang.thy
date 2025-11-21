@@ -12,7 +12,7 @@ begin
 *)
 
 (* No way to express references, domains *)
-datatype lit = LBool bool | LInt int | LNull | LPerm real
+datatype lit = LBool bool | LInt int | LNull | LPerm real | LEpsilon
 
 abbreviation NoPerm where "NoPerm \<equiv> LPerm 0"
 abbreviation WritePerm where "WritePerm \<equiv> LPerm 1"
@@ -35,7 +35,7 @@ type_synonym var = nat
 
 type_synonym abs_type = string
 
-datatype vtyp = TInt | TBool | TPerm | TRef | TAbs abs_type
+datatype vtyp = TInt | TBool | TPerm | TRef | TAbs abs_type | TEpsilon
 
 primrec type_of_lit :: "lit \<Rightarrow> vtyp"
   where
@@ -43,6 +43,7 @@ primrec type_of_lit :: "lit \<Rightarrow> vtyp"
  | "type_of_lit (LInt i) = TInt"
  | "type_of_lit (LPerm _) = TPerm"
  | "type_of_lit LNull = TRef"
+ | "type_of_lit LEpsilon = TEpsilon"
 
 datatype pure_exp =
   ELit lit
@@ -66,7 +67,7 @@ datatype pure_exp =
   | PExists vtyp pure_exp
   | is_pforall: PForall vtyp pure_exp
 
-datatype 'p exp_or_wildcard = PureExp 'p | Wildcard
+datatype 'p exp_or_wildcard = PureExp 'p | Wildcard | Epsilon
 
 datatype 'p atomic_assert =
   is_pure_atomic: Pure 'p
@@ -141,6 +142,7 @@ datatype stmt =
 
 \<comment>\<open>Misc\<close>
 | Label label | Scope vtyp stmt | Skip
+
 
 (* method m(x) returns y req P ens Q *)
 record method_decl =

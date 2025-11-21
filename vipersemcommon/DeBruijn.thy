@@ -111,6 +111,7 @@ fun substitute_pure_exp :: "(var \<rightharpoonup> var) \<Rightarrow> pure_exp \
 fun substitute_pure_or_wildcard :: "(var \<rightharpoonup> var) \<Rightarrow> pure_exp exp_or_wildcard \<Rightarrow> pure_exp exp_or_wildcard" where
   "substitute_pure_or_wildcard \<sigma> (PureExp p) = PureExp (substitute_pure_exp \<sigma> p)"
 | "substitute_pure_or_wildcard \<sigma> Wildcard = Wildcard"
+| "substitute_pure_or_wildcard \<sigma> Epsilon = Epsilon"
 
 fun substitute_atomic_assert :: "(var \<rightharpoonup> var) \<Rightarrow> pure_exp atomic_assert \<Rightarrow> pure_exp atomic_assert" where
   "substitute_atomic_assert \<sigma> (Pure p) = Pure (substitute_pure_exp \<sigma> p)"

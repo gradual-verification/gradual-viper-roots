@@ -14,6 +14,7 @@ fun real_mult_permexpr :: "real \<Rightarrow> pure_exp exp_or_wildcard \<Rightar
   where 
     "real_mult_permexpr p Wildcard = (if p = 0 then PureExp (ELit NoPerm) else (if p > 0 then Wildcard else undefined))"
   | "real_mult_permexpr p (PureExp e) = PureExp (Binop (real_to_expr p) Mult e)"
+  | "real_mult_permexpr p Epsilon = (if p = 0 then PureExp (ELit NoPerm) else (if p > 0 then Epsilon else undefined))"
 
 fun syntactic_mult :: "real \<Rightarrow> assertion \<Rightarrow> assertion"
   where 

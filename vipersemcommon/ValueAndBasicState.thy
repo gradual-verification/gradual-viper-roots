@@ -23,7 +23,7 @@ datatype ref = is_address: Address (the_address: address) | Null
 subsection \<open>Viper (extended) values\<close>
 
 text \<open>The abstract type parameter in the values is the carrier type for domain values\<close>
-datatype (discs_sels) 'a val = VInt (the_int: int) | VBool bool | VPerm real | VRef (the_ref: ref) | VAbs 'a
+datatype (discs_sels) 'a val = VInt (the_int: int) | VBool bool | VPerm real | VRef (the_ref: ref) | VAbs 'a | VEpsilon
 
 type_synonym 'a store = "var \<rightharpoonup> 'a val" (* De Bruijn indices *)
 
@@ -32,6 +32,7 @@ fun val_of_lit :: "lit \<Rightarrow> 'a val" where
 | "val_of_lit (LInt n) = VInt n"
 | "val_of_lit (LPerm r) = VPerm r"
 | "val_of_lit LNull = VRef Null"
+| "val_of_lit LEpsilon = VEpsilon"
 
 
 text \<open>Predicate location\<close>
@@ -61,6 +62,15 @@ permission ('p::pos_perm) masks. \<^typ>\<open>('b, 'p::pos_perm) abstract_mask\
 definition zero_mask :: "('b, 'p::pos_perm) abstract_mask" where "zero_mask hl = pnone"
 definition add_masks :: "('b, 'p::pos_perm) abstract_mask \<Rightarrow> ('b, 'p::pos_perm) abstract_mask \<Rightarrow> ('b, 'p::pos_perm) abstract_mask" where
   "add_masks \<pi>1 \<pi>2 hl = (\<pi>1 hl + \<pi>2 hl)"
+
+text \<open>Runtime checks\<close>
+
+type_synonym 'a rtc_valuation = "var \<rightharpoonup> 'a val"
+type_synonym 'a runtime_check = "'a rtc_valuation \<rightharpoonup> 'a val"
+
+record 'a ret_struct = 
+  ret_stmt :: "stmt"
+  ret_rtc :: "'a runtime_check option"
 
 lemma padd_pos:
   assumes "p \<noteq> pnone"
@@ -174,6 +184,7 @@ fun get_type :: "('v \<Rightarrow> abs_type) \<Rightarrow> 'v val \<Rightarrow> 
 | "get_type \<Delta> (VPerm _) = TPerm"
 | "get_type \<Delta> (VRef _) = TRef"
 | "get_type \<Delta> (VAbs v) = TAbs (\<Delta> v)"
+| "get_type \<Delta> (VEpsilon) = TEpsilon"
 
 
 fun set_from_type :: "('v \<Rightarrow> abs_type) \<Rightarrow> vtyp \<Rightarrow> 'v sem_type" where
@@ -182,6 +193,7 @@ fun set_from_type :: "('v \<Rightarrow> abs_type) \<Rightarrow> vtyp \<Rightarro
 | "set_from_type \<Delta> TPerm = {VPerm r |r. True}"
 | "set_from_type \<Delta> TRef = {VRef r |r. True}"
 | "set_from_type \<Delta> (TAbs t) = {VAbs v |v. \<Delta> v = t}"
+| "set_from_type \<Delta> TEpsilon = {VEpsilon}"
 
 (* TODO: Rename set_from_type to sem_vtyp? *)
 abbreviation sem_vtyp where "sem_vtyp \<equiv> set_from_type"
@@ -192,6 +204,7 @@ lemma sem_vtyp_simps [simp]:
   "VPerm p \<in> sem_vtyp \<Delta> ty \<longleftrightarrow> ty = TPerm"
   "VRef r \<in> sem_vtyp \<Delta> ty \<longleftrightarrow> ty = TRef"
   "VAbs t \<in> sem_vtyp \<Delta> ty \<longleftrightarrow> (\<exists> a. ty = TAbs a \<and> \<Delta> t = a)"
+  "VEpsilon \<in> sem_vtyp \<Delta> ty \<longleftrightarrow> ty = TEpsilon"
   by ((cases ty)?; simp)+
 
 lemma sem_vtyp_val_of_lit [simp] :
@@ -243,17 +256,21 @@ lemma has_type_get_type:
   unfolding has_type_def
   by (cases t; cases v; auto)
 
+
+
 lemma has_type_simps [simp]:
   "has_type \<Delta> ty (VInt n) \<longleftrightarrow> ty = TInt"
   "has_type \<Delta> TInt v \<longleftrightarrow> (\<exists> n. v = VInt n)"
   "has_type \<Delta> ty (VBool b) \<longleftrightarrow> ty = TBool"
   "has_type \<Delta> TBool v \<longleftrightarrow> (\<exists> n. v = VBool n)"
-  "has_type \<Delta> ty (VPerm p) \<longleftrightarrow> ty = TPerm"
+  "has_type \<Delta> ty (VPerm p)\<longleftrightarrow> ty = TPerm"
   "has_type \<Delta> TPerm v \<longleftrightarrow> (\<exists> n. v = VPerm n)"
   "has_type \<Delta> ty (VRef r) \<longleftrightarrow> ty = TRef"
   "has_type \<Delta> TRef v \<longleftrightarrow> (\<exists> n. v = VRef n)"
   "has_type \<Delta> ty (VAbs t) \<longleftrightarrow> (\<exists> a. ty = TAbs a \<and> \<Delta> t = a)"
   "has_type \<Delta> (TAbs a) v \<longleftrightarrow> (\<exists> t. v = VAbs t \<and> \<Delta> t = a)"
+  "has_type \<Delta> ty VEpsilon \<longleftrightarrow> ty = TEpsilon"
+  "has_type \<Delta> TEpsilon v \<longleftrightarrow> v = VEpsilon"
   by ((cases ty)?; auto simp add:has_type_def)+
 
 lemma has_type_val_of_lit [simp]:

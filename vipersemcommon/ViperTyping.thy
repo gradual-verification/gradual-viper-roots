@@ -99,7 +99,7 @@ inductive binop_type :: "binop \<Rightarrow> vtyp \<Rightarrow> vtyp \<Rightarro
 
   \<comment>\<open>equality and inequality\<close>
   | EqAndNeqAbs: "\<lbrakk> bop \<in> {Eq, Neq}; \<tau>1 = TAbs a1; \<tau>2 = TAbs a2 \<rbrakk> \<Longrightarrow> binop_type bop \<tau>1 \<tau>2 TBool"
-  | EqAndNeq: "\<lbrakk> bop \<in> {Eq, Neq} \<rbrakk> \<Longrightarrow> binop_type bop \<tau> \<tau> TBool"
+  | EqAndNeq: "\<lbrakk> bop \<in> {Eq, Neq}; \<tau> \<noteq> TEpsilon \<rbrakk> \<Longrightarrow> binop_type bop \<tau> \<tau> TBool"
 
 inductive_cases binop_type_elim : "binop_type op ty1 ty2 ty3"
 
