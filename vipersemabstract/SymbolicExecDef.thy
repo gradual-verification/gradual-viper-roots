@@ -34,13 +34,16 @@ lemma eval_bool_binop_lazy_bool :
 definition map_agree :: "('a \<rightharpoonup> 'b) \<Rightarrow> ('a \<rightharpoonup> 'b) \<Rightarrow> bool" where
 "map_agree m1 m2 = (\<forall> i a b. m1 i = Some a \<longrightarrow> m2 i = Some b \<longrightarrow> a = b)"
 
-type_synonym 'a ret_typ = "bool \<times> 'a runtime_check option"
+type_synonym 'a ret_typ = "bool \<times> 'a runtime_check list"
 
 fun rtc_or :: "'a ret_typ \<Rightarrow> 'a ret_typ \<Rightarrow> 'a ret_typ" where
   "rtc_or (True, rtc1) _ = (True, rtc1)"
 | "rtc_or _ (True, rtc2) = (True, rtc2)"
-| "rtc_or _ _ = (False, None)"
+| "rtc_or _ _ = (False, [])"
 
+fun rtc_and :: "'a ret_typ \<Rightarrow> 'a ret_typ \<Rightarrow> 'a ret_typ" where
+  "rtc_and (True, rtc1) (True, rtc2) = (True, rtc1 @ rtc2)"
+| "rtc_and _ _ = (False, [])"
 
 lemma plus_assoc3 :
   assumes "Some abc = ab \<oplus> c"
@@ -288,6 +291,7 @@ record 'a sym_state =
   sym_store_type :: "var \<rightharpoonup> vtyp"
   sym_fields :: "field_name \<rightharpoonup> vtyp"
   sym_imprecise :: "bool"
+  sym_runtime :: "'a runtime_check list"
 
 
 
@@ -307,58 +311,95 @@ declare sym_fresh_def [simp]
 definition sym_gen_fresh :: "'a sym_state \<Rightarrow> vtyp \<Rightarrow> ('a sym_state \<Rightarrow> sym_val \<Rightarrow> bool) \<Rightarrow> bool" where
 "sym_gen_fresh \<sigma> ty Q = Q (sym_cond_add (\<sigma>\<lparr>sym_used := Suc (sym_used \<sigma>)\<rparr>) (SHasType ty (sym_fresh \<sigma>))) (sym_fresh \<sigma>)"
 
-definition sym_consolidate :: "'a sym_state \<Rightarrow> ('a sym_state \<Rightarrow> bool) \<Rightarrow> bool" where
-"sym_consolidate \<sigma> Q = (\<forall> V ch.
+definition sym_consolidate :: "'a sym_state \<Rightarrow> ('a sym_state \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
+"sym_consolidate \<sigma> Q = ((\<forall> V ch.
    valu_indep (sym_used \<sigma>) (sym_cond \<sigma>) \<and> (\<forall>c. c \<in> set (sym_heap \<sigma>) \<longrightarrow> valu_indep (sym_used \<sigma>) (\<lambda>V. (chunk_recv c V, chunk_perm c V, chunk_val c V))) \<longrightarrow>
    sym_cond \<sigma> V = Some (VBool True) \<longrightarrow> concretize_heap (sym_heap \<sigma>) V = Some ch \<longrightarrow>
    (\<exists> g' h' ch'. valu_indep (sym_used \<sigma>) g' \<and> (\<forall>c. c \<in> set h' \<longrightarrow> valu_indep (sym_used \<sigma>) (\<lambda>V. (chunk_recv c V, chunk_perm c V, chunk_val c V))) \<and>
-     g' V = Some (VBool True) \<and> concretize_heap h' V = Some ch' \<and> ch \<succeq> ch' \<and> Q (\<sigma>\<lparr> sym_cond := g', sym_heap := h' \<rparr>)))"
+     g' V = Some (VBool True) \<and> concretize_heap h' V = Some ch' \<and> ch \<succeq> ch' \<and> fst (Q (\<sigma>\<lparr> sym_cond := g', sym_heap := h' \<rparr>)))) ,
+  (SOME rtc. (\<forall> V ch.
+   valu_indep (sym_used \<sigma>) (sym_cond \<sigma>) \<and> (\<forall>c. c \<in> set (sym_heap \<sigma>) \<longrightarrow> valu_indep (sym_used \<sigma>) (\<lambda>V. (chunk_recv c V, chunk_perm c V, chunk_val c V))) \<longrightarrow>
+   sym_cond \<sigma> V = Some (VBool True) \<longrightarrow> concretize_heap (sym_heap \<sigma>) V = Some ch \<longrightarrow>
+   (\<exists> g' h' ch'. valu_indep (sym_used \<sigma>) g' \<and> (\<forall>c. c \<in> set h' \<longrightarrow> valu_indep (sym_used \<sigma>) (\<lambda>V. (chunk_recv c V, chunk_perm c V, chunk_val c V))) \<and>
+     g' V = Some (VBool True) \<and> concretize_heap h' V = Some ch' \<and> ch \<succeq> ch' \<and> Q (\<sigma>\<lparr> sym_cond := g', sym_heap := h' \<rparr>) = (True, rtc)))))"
 
-definition sym_heap_do_add :: "'a sym_state \<Rightarrow> 'a chunk \<Rightarrow> ('a sym_state \<Rightarrow> bool) \<Rightarrow> bool" where
+definition sym_heap_do_add :: "'a sym_state \<Rightarrow> 'a chunk \<Rightarrow> ('a sym_state \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
 "sym_heap_do_add \<sigma> c Q = sym_consolidate (sym_heap_add \<sigma> c) Q"
 
-definition sym_opheap_do_add :: "'a sym_state \<Rightarrow> 'a chunk \<Rightarrow> ('a sym_state \<Rightarrow> bool) \<Rightarrow> bool" where
+definition sym_opheap_do_add :: "'a sym_state \<Rightarrow> 'a chunk \<Rightarrow> ('a sym_state \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
 "sym_opheap_do_add \<sigma> c Q = sym_consolidate (sym_opheap_add \<sigma> c) Q"
 
 (* Use sym_opheap_do_add *)
-definition sym_imprecise_rtc :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> ('a sym_state \<Rightarrow> bool) \<Rightarrow> 'a ret_typ" where
-"sym_imprecise_rtc \<sigma> te f Q = (sym_imprecise \<sigma> \<and> 
-  Q (\<sigma>\<lparr> sym_cond := (\<not>\<^sub>s(te =\<^sub>s SNull)) \<and>\<^sub>s sym_cond \<sigma>,
+definition sym_imprecise_rtc :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
+"sym_imprecise_rtc \<sigma> te f Q = 
+  (let p = Q (\<sigma> \<lparr>
+      sym_cond := (\<not>\<^sub>s(te =\<^sub>s SNull)) \<and>\<^sub>s sym_cond \<sigma>,
       sym_opheap := 
         \<lparr> chunk_field = f,
         chunk_recv = SInt (sym_fresh \<sigma>), 
         chunk_perm = SPermEpsilon, 
-        chunk_val = te \<rparr> # sym_opheap \<sigma> \<rparr>), Some te)"
+        chunk_val = te \<rparr> # sym_opheap \<sigma>,
+      sym_runtime := te # sym_runtime \<sigma> \<rparr>) te in
+  (sym_imprecise \<sigma> \<and> (sym_cond \<sigma> \<turnstile>\<^sub>s \<not>\<^sub>s (te =\<^sub>s SNull)) \<and> fst p, snd p))"
 
-definition sym_stabilize :: "'a sym_state \<Rightarrow> ('a sym_state \<Rightarrow> bool) \<Rightarrow> bool" where
+definition sym_imprecise_rtc_p :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
+"sym_imprecise_rtc_p \<sigma> te f Q = 
+  (let p = Q (\<sigma> \<lparr>
+      sym_cond := (\<not>\<^sub>s(te =\<^sub>s SNull)) \<and>\<^sub>s sym_cond \<sigma>,
+      sym_opheap := 
+        \<lparr> chunk_field = f,
+        chunk_recv = SInt (sym_fresh \<sigma>), 
+        chunk_perm = SPermEpsilon, 
+        chunk_val = te \<rparr> # sym_opheap \<sigma> \<rparr>) te in
+  (sym_imprecise \<sigma> \<and> (sym_cond \<sigma> \<turnstile>\<^sub>s \<not>\<^sub>s (te =\<^sub>s SNull)) \<and> fst p, snd p))"
+
+definition sym_imprecise_rtc_c :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
+"sym_imprecise_rtc_c \<sigma> te f Q = 
+  (let p = Q (\<sigma> \<lparr> sym_runtime := te # sym_runtime \<sigma> \<rparr>) te in
+  (sym_imprecise \<sigma> \<and> (sym_cond \<sigma> \<turnstile>\<^sub>s \<not>\<^sub>s (te =\<^sub>s SNull)) \<and> fst p, snd p))"
+
+definition sym_stabilize :: "'a sym_state \<Rightarrow> ('a sym_state \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
 "sym_stabilize \<sigma> Q = sym_consolidate \<sigma> (\<lambda> \<sigma>'. 
-   list_all (\<lambda> c. (sym_cond \<sigma>' \<turnstile>\<^sub>s SPerm 0 <\<^sub>s chunk_perm c)) (sym_heap \<sigma>') \<and> Q \<sigma>')"
+   rtc_and ((list_all (\<lambda> c. (sym_cond \<sigma>' \<turnstile>\<^sub>s SPerm 0 <\<^sub>s chunk_perm c)) (sym_heap \<sigma>')), []) (Q \<sigma>'))"
 
-definition sym_heap_extract :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> 'a sym_exp option \<Rightarrow> ('a sym_state \<Rightarrow> 'a chunk \<Rightarrow> bool) \<Rightarrow> bool" where
-"sym_heap_extract \<sigma> te f p Q = sym_consolidate \<sigma> (\<lambda> \<sigma>'. \<exists> c cs. sym_heap \<sigma>' = c # cs \<and> chunk_field c = f \<and>
+definition sym_heap_extract :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> 'a sym_exp option \<Rightarrow> ('a sym_state \<Rightarrow> 'a chunk \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
+"sym_heap_extract \<sigma> te f p Q = sym_consolidate \<sigma> (\<lambda> \<sigma>'. (let (c, cs) = SOME (c, cs). sym_heap \<sigma>' = c # cs \<and> chunk_field c = f \<and>
    (sym_cond \<sigma>' \<turnstile>\<^sub>s te =\<^sub>s chunk_recv c \<and>\<^sub>s 
-    (case p of Some tp \<Rightarrow> SPerm 0 \<le>\<^sub>s tp \<and>\<^sub>s tp \<le>\<^sub>s chunk_perm c | None \<Rightarrow> SPerm 0 <\<^sub>s chunk_perm c)) \<and> Q (\<sigma>'\<lparr> sym_heap := cs \<rparr>) c)"
+    (case p of Some tp \<Rightarrow> SPerm 0 \<le>\<^sub>s tp \<and>\<^sub>s tp \<le>\<^sub>s chunk_perm c | None \<Rightarrow> SPerm 0 <\<^sub>s chunk_perm c)) in Q (\<sigma>'\<lparr> sym_heap := cs \<rparr>) c))"
 
-definition sym_opheap_extract :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> 'a sym_exp option \<Rightarrow> ('a sym_state \<Rightarrow> 'a chunk \<Rightarrow> bool) \<Rightarrow> bool" where
-"sym_opheap_extract \<sigma> te f p Q = sym_consolidate \<sigma> (\<lambda> \<sigma>'. \<exists> c cs. sym_opheap \<sigma>' = c # cs \<and> chunk_field c = f \<and>
+definition sym_opheap_extract :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> 'a sym_exp option \<Rightarrow> ('a sym_state \<Rightarrow> 'a chunk \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
+"sym_opheap_extract \<sigma> te f p Q = sym_consolidate \<sigma> (\<lambda> \<sigma>'. (let (c, cs) = SOME (c, cs). sym_opheap \<sigma>' = c # cs \<and> chunk_field c = f \<and>
    (sym_cond \<sigma>' \<turnstile>\<^sub>s te =\<^sub>s chunk_recv c \<and>\<^sub>s 
-    (case p of Some tp \<Rightarrow> SPerm 0 \<le>\<^sub>s tp \<and>\<^sub>s tp \<le>\<^sub>s chunk_perm c | None \<Rightarrow> SPerm 0 <\<^sub>s chunk_perm c)) \<and> Q (\<sigma>'\<lparr> sym_opheap := cs \<rparr>) c)"
+    (case p of Some tp \<Rightarrow> SPerm 0 \<le>\<^sub>s tp \<and>\<^sub>s tp \<le>\<^sub>s chunk_perm c | None \<Rightarrow> SPerm 0 <\<^sub>s chunk_perm c)) in Q (\<sigma>'\<lparr> sym_opheap := cs \<rparr>) c))"
 
-(* still need to include assert stmt *)
-definition sym_exp_acc_helper ::  "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> bool) \<Rightarrow> 'a ret_typ" where
-"sym_exp_acc_helper \<sigma> te f Q = 
+(* Note: sym_heap_extract may 
+  need to be modified to take in a Q that returns 'a ret_typ*)
+definition sym_exp_acc_helper ::  "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
+"sym_exp_acc_helper \<sigma> te f Q =
   rtc_or (
-    rtc_or (
-      sym_heap_extract \<sigma> te f (Some (SPerm 0)) (\<lambda> \<sigma> c.
+      rtc_or (
+      (sym_heap_extract \<sigma> te f (Some (SPerm 0)) (\<lambda> \<sigma> c.
         sym_heap_do_add \<sigma> c (\<lambda> \<sigma>.
-        Q \<sigma> (chunk_val c))), None)
+        Q \<sigma> (chunk_val c)))))
       (sym_opheap_extract \<sigma> te f (Some (SPerm 0)) (\<lambda> \<sigma> c.
+        sym_opheap_do_add \<sigma> c (\<lambda> \<sigma>.
+        Q \<sigma> (chunk_val c)))))
+      (sym_imprecise_rtc \<sigma> te f Q)"
+
+definition sym_exp_c_acc_helper ::  "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
+  "sym_exp_c_acc_helper \<sigma> te f Q =
+  rtc_or (
+      rtc_or (
+      (sym_heap_extract \<sigma> te f (Some (SPerm 0)) (\<lambda> \<sigma> c.
         sym_heap_do_add \<sigma> c (\<lambda> \<sigma>.
-        Q \<sigma> (chunk_val c))), None))
-      (sym_imprecise_rtc \<sigma> te f (\<lambda> \<sigma>. Q \<sigma> te))"
+        Q \<sigma> (chunk_val c)))))
+      (sym_opheap_extract \<sigma> te f (Some (SPerm 0)) (\<lambda> \<sigma> c.
+        sym_opheap_do_add \<sigma> c (\<lambda> \<sigma>.
+        Q \<sigma> (chunk_val c)))))
+      (sym_imprecise_rtc \<sigma> te f Q)"
 
 lemma sym_consolidateE :
-  assumes "sym_consolidate \<sigma> Q"
+  assumes "fst (sym_consolidate \<sigma> Q)"
   assumes "valu_indep (sym_used \<sigma>) (sym_cond \<sigma>)"
   assumes "(\<forall>c. c \<in> set (sym_heap \<sigma>) \<longrightarrow> valu_indep (sym_used \<sigma>) (\<lambda>V. (chunk_recv c V, chunk_perm c V, chunk_val c V)))"
   assumes "sym_cond \<sigma> V = Some (VBool True)"
@@ -369,15 +410,17 @@ lemma sym_consolidateE :
     g' V = Some (VBool True) \<Longrightarrow>
     concretize_heap h' V = Some ch' \<Longrightarrow>
     ch \<succeq> ch' \<Longrightarrow>
-    Q (\<sigma>\<lparr>sym_cond := g', sym_heap := h'\<rparr>) \<Longrightarrow>
+    fst (Q (\<sigma>\<lparr>sym_cond := g', sym_heap := h'\<rparr>)) \<Longrightarrow>
     P"
   shows "P"
-  using assms unfolding sym_consolidate_def by blast
-
+  using assms unfolding sym_consolidate_def
+  apply (simp, blast)
+  done
+  
 lemma sym_consolidate_frame :
   assumes "sym_heap \<sigma> = c # cs"
-  assumes "sym_consolidate (\<sigma>\<lparr>sym_heap := cs\<rparr>) (\<lambda> \<sigma>. Q (\<sigma>\<lparr> sym_heap := c # sym_heap \<sigma> \<rparr>))"
-  shows "sym_consolidate \<sigma> Q"
+  assumes "fst (sym_consolidate (\<sigma>\<lparr>sym_heap := cs\<rparr>) (\<lambda> \<sigma>. Q (\<sigma>\<lparr> sym_heap := c # sym_heap \<sigma> \<rparr>)))"
+  shows "fst (sym_consolidate \<sigma> Q)"
   unfolding sym_consolidate_def
   apply (clarsimp simp add: assms(1))
   apply (insert assms(2)) apply (erule sym_consolidateE; simp)
@@ -385,6 +428,7 @@ lemma sym_consolidate_frame :
   apply (clarsimp)
   apply (safe del:exI intro!:exI; assumption?; simp add:concretize_heap_cons) by fastforce+
 
+(*
 lemma sym_consolidate_drop :
   assumes "sym_heap \<sigma> = c # cs"
   assumes "Q (\<sigma>\<lparr>sym_heap := cs\<rparr>)"
@@ -417,33 +461,33 @@ lemma sym_consolidate_dup :
   apply (erule (4) sym_consolidateE)
   apply (erule sym_consolidateE; simp)
   using succ_trans by (smt (verit, ccfv_SIG))
-
+*)
 subsection \<open>symbolic evaluation\<close>
 
-definition sfail :: "'a \<Rightarrow> bool" where
-"sfail _ = False"
+definition sfail :: "'a \<Rightarrow> 'b ret_typ" where
+"sfail _ = (False, [])"
 
-fun sexec_exp :: "'a sym_state \<Rightarrow> pure_exp \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> bool) \<Rightarrow> bool"
+fun sexec_exp :: "'a sym_state \<Rightarrow> pure_exp \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ"
   where
   "sexec_exp \<sigma> (ELit l) Q = Q \<sigma> (SLit l)"
 
-| "sexec_exp \<sigma> (Var x) Q = (\<exists> t. sym_store \<sigma> x = Some t \<and> Q \<sigma> t)"
+| "sexec_exp \<sigma> (Var x) Q = (let t = SOME t. sym_store \<sigma> x = Some t in Q \<sigma> t)"
 
 | "sexec_exp \<sigma> (Unop op e) Q = sexec_exp \<sigma> e (\<lambda> \<sigma> t. Q \<sigma> (SUnop op t))"
 
 | "sexec_exp \<sigma> (Binop e1 op e2) Q = sexec_exp \<sigma> e1 (\<lambda> \<sigma> t1. 
    case binop_lazy_bool op of 
-     Some bres \<Rightarrow> Q (sym_cond_add \<sigma> (t1 =\<^sub>s SBool (fst bres))) (SBool (snd bres)) \<and>
-       sexec_exp (sym_cond_add \<sigma> (t1 =\<^sub>s (\<not>\<^sub>s SBool (fst bres)))) e2 Q
-   | None \<Rightarrow> sexec_exp \<sigma> e2 (\<lambda> \<sigma> t2. (sym_cond \<sigma> \<turnstile>\<^sub>s SBinopSafe t1 op t2) \<and> Q \<sigma> (SBinop t1 op t2)))"
+     Some bres \<Rightarrow> rtc_and (Q (sym_cond_add \<sigma> (t1 =\<^sub>s SBool (fst bres))) (SBool (snd bres)))
+       (sexec_exp (sym_cond_add \<sigma> (t1 =\<^sub>s (\<not>\<^sub>s SBool (fst bres)))) e2 Q)
+   | None \<Rightarrow> sexec_exp \<sigma> e2 (\<lambda> \<sigma> t2. 
+      rtc_and (sym_cond \<sigma> \<turnstile>\<^sub>s SBinopSafe t1 op t2, []) (Q \<sigma> (SBinop t1 op t2))))"
 
 | "sexec_exp \<sigma> (CondExp e1 e2 e3) Q = sexec_exp \<sigma> e1 (\<lambda> \<sigma> t1.
-    sexec_exp (sym_cond_add \<sigma> t1) e2 Q \<and> sexec_exp (sym_cond_add \<sigma> (\<not>\<^sub>s t1)) e3 Q)"
+    rtc_and (sexec_exp (sym_cond_add \<sigma> t1) e2 Q) 
+      (sexec_exp (sym_cond_add \<sigma> (\<not>\<^sub>s t1)) e3 Q))"
 
 | "sexec_exp \<sigma> (FieldAcc e f) Q = sexec_exp \<sigma> e (\<lambda> \<sigma> te.
-    sym_heap_extract \<sigma> te f (Some (SPerm 0)) (\<lambda> \<sigma> c.
-    sym_heap_do_add \<sigma> c (\<lambda> \<sigma>.
-    Q \<sigma> (chunk_val c))))"
+    sym_exp_acc_helper \<sigma> te f Q)"
 
 | "sexec_exp \<sigma> (Old l e) Q = sfail (''Not supported expression: Old'')"
 | "sexec_exp \<sigma> (Perm v va) Q = sfail (''Not supported expression: Perm'')"
@@ -454,6 +498,38 @@ fun sexec_exp :: "'a sym_state \<Rightarrow> pure_exp \<Rightarrow> ('a sym_stat
 | "sexec_exp \<sigma> (Let _ _) Q = sfail (''Not supported expression: Let'')"
 | "sexec_exp \<sigma> (PExists _ _) Q = sfail (''Not supported expression: PExists'')"
 | "sexec_exp \<sigma> (PForall _ _) Q = sfail (''Not supported expression: PForall'')"
+
+(*fun sexec_exp_p :: "'a sym_state \<Rightarrow> pure_exp \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> bool) \<Rightarrow> bool"
+  where
+  "sexec_exp_p \<sigma> (ELit l) Q = Q \<sigma> (SLit l)"
+
+| "sexec_exp_p \<sigma> (Var x) Q = (\<exists> t. sym_store \<sigma> x = Some t \<and> Q \<sigma> t)"
+
+| "sexec_exp_p \<sigma> (Unop op e) Q = sexec_exp \<sigma> e (\<lambda> \<sigma> t. Q \<sigma> (SUnop op t))"
+
+| "sexec_exp_p \<sigma> (Binop e1 op e2) Q = sexec_exp \<sigma> e1 (\<lambda> \<sigma> t1. 
+   case binop_lazy_bool op of 
+     Some bres \<Rightarrow> Q (sym_cond_add \<sigma> (t1 =\<^sub>s SBool (fst bres))) (SBool (snd bres)) \<and>
+       sexec_exp (sym_cond_add \<sigma> (t1 =\<^sub>s (\<not>\<^sub>s SBool (fst bres)))) e2 Q
+   | None \<Rightarrow> sexec_exp \<sigma> e2 (\<lambda> \<sigma> t2. (sym_cond \<sigma> \<turnstile>\<^sub>s SBinopSafe t1 op t2) \<and> Q \<sigma> (SBinop t1 op t2)))"
+
+| "sexec_exp_p \<sigma> (CondExp e1 e2 e3) Q = sexec_exp \<sigma> e1 (\<lambda> \<sigma> t1.
+    sexec_exp (sym_cond_add \<sigma> t1) e2 Q \<and> sexec_exp (sym_cond_add \<sigma> (\<not>\<^sub>s t1)) e3 Q)"
+
+| "sexec_exp_p \<sigma> (FieldAcc e f) Q = sexec_exp \<sigma> e (\<lambda> \<sigma> te.
+    sym_heap_extract \<sigma> te f (Some (SPerm 0)) (\<lambda> \<sigma> c.
+    sym_heap_do_add \<sigma> c (\<lambda> \<sigma>.
+    Q \<sigma> (chunk_val c))))"
+
+| "sexec_exp_p \<sigma> (Old l e) Q = sfail (''Not supported expression: Old'')"
+| "sexec_exp_p \<sigma> (Perm v va) Q = sfail (''Not supported expression: Perm'')"
+| "sexec_exp_p \<sigma> (PermPred v va) Q = sfail (''Not supported expression: PermPred'')"
+| "sexec_exp_p \<sigma> (FunApp f es) Q = sfail (''Not supported expression: FunApp'')"
+| "sexec_exp_p \<sigma> Result Q = sfail (''Not supported expression: Result'')"
+| "sexec_exp_p \<sigma> (Unfolding _ _ _) Q = sfail (''Not supported expression: Unfolding'')"
+| "sexec_exp_p \<sigma> (Let _ _) Q = sfail (''Not supported expression: Let'')"
+| "sexec_exp_p \<sigma> (PExists _ _) Q = sfail (''Not supported expression: PExists'')"
+| "sexec_exp_p \<sigma> (PForall _ _) Q = sfail (''Not supported expression: PForall'')"*)
 
 
 fun sproduce :: "'a sym_state \<Rightarrow> (pure_exp, pure_exp atomic_assert) assert \<Rightarrow> ('a sym_state \<Rightarrow> bool) \<Rightarrow> bool" where
