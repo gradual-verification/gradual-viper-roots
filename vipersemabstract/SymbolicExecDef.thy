@@ -308,7 +308,7 @@ definition sym_fresh :: "'a sym_state \<Rightarrow> sym_val" where
 "sym_fresh \<sigma> = sym_used \<sigma>"
 declare sym_fresh_def [simp]
 
-definition sym_gen_fresh :: "'a sym_state \<Rightarrow> vtyp \<Rightarrow> ('a sym_state \<Rightarrow> sym_val \<Rightarrow> bool) \<Rightarrow> bool" where
+definition sym_gen_fresh :: "'a sym_state \<Rightarrow> vtyp \<Rightarrow> ('a sym_state \<Rightarrow> sym_val \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
 "sym_gen_fresh \<sigma> ty Q = Q (sym_cond_add (\<sigma>\<lparr>sym_used := Suc (sym_used \<sigma>)\<rparr>) (SHasType ty (sym_fresh \<sigma>))) (sym_fresh \<sigma>)"
 
 definition sym_consolidate :: "'a sym_state \<Rightarrow> ('a sym_state \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
@@ -386,6 +386,18 @@ definition sym_exp_acc_helper ::  "'a sym_state \<Rightarrow> 'a sym_exp \<Right
         Q \<sigma> (chunk_val c)))))
       (sym_imprecise_rtc \<sigma> te f Q)"
 
+definition sym_exp_p_acc_helper ::  "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
+  "sym_exp_p_acc_helper \<sigma> te f Q =
+  rtc_or (
+      rtc_or (
+      (sym_heap_extract \<sigma> te f (Some (SPerm 0)) (\<lambda> \<sigma> c.
+        sym_heap_do_add \<sigma> c (\<lambda> \<sigma>.
+        Q \<sigma> (chunk_val c)))))
+      (sym_opheap_extract \<sigma> te f (Some (SPerm 0)) (\<lambda> \<sigma> c.
+        sym_opheap_do_add \<sigma> c (\<lambda> \<sigma>.
+        Q \<sigma> (chunk_val c)))))
+      (sym_imprecise_rtc_p \<sigma> te f Q)"
+
 definition sym_exp_c_acc_helper ::  "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
   "sym_exp_c_acc_helper \<sigma> te f Q =
   rtc_or (
@@ -396,7 +408,7 @@ definition sym_exp_c_acc_helper ::  "'a sym_state \<Rightarrow> 'a sym_exp \<Rig
       (sym_opheap_extract \<sigma> te f (Some (SPerm 0)) (\<lambda> \<sigma> c.
         sym_opheap_do_add \<sigma> c (\<lambda> \<sigma>.
         Q \<sigma> (chunk_val c)))))
-      (sym_imprecise_rtc \<sigma> te f Q)"
+      (sym_imprecise_rtc_c \<sigma> te f Q)"
 
 lemma sym_consolidateE :
   assumes "fst (sym_consolidate \<sigma> Q)"
@@ -499,27 +511,27 @@ fun sexec_exp :: "'a sym_state \<Rightarrow> pure_exp \<Rightarrow> ('a sym_stat
 | "sexec_exp \<sigma> (PExists _ _) Q = sfail (''Not supported expression: PExists'')"
 | "sexec_exp \<sigma> (PForall _ _) Q = sfail (''Not supported expression: PForall'')"
 
-(*fun sexec_exp_p :: "'a sym_state \<Rightarrow> pure_exp \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> bool) \<Rightarrow> bool"
+fun sexec_exp_p :: "'a sym_state \<Rightarrow> pure_exp \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ"
   where
   "sexec_exp_p \<sigma> (ELit l) Q = Q \<sigma> (SLit l)"
 
-| "sexec_exp_p \<sigma> (Var x) Q = (\<exists> t. sym_store \<sigma> x = Some t \<and> Q \<sigma> t)"
+| "sexec_exp_p \<sigma> (Var x) Q = (let t = SOME t. sym_store \<sigma> x = Some t in Q \<sigma> t)"
 
 | "sexec_exp_p \<sigma> (Unop op e) Q = sexec_exp \<sigma> e (\<lambda> \<sigma> t. Q \<sigma> (SUnop op t))"
 
 | "sexec_exp_p \<sigma> (Binop e1 op e2) Q = sexec_exp \<sigma> e1 (\<lambda> \<sigma> t1. 
    case binop_lazy_bool op of 
-     Some bres \<Rightarrow> Q (sym_cond_add \<sigma> (t1 =\<^sub>s SBool (fst bres))) (SBool (snd bres)) \<and>
-       sexec_exp (sym_cond_add \<sigma> (t1 =\<^sub>s (\<not>\<^sub>s SBool (fst bres)))) e2 Q
-   | None \<Rightarrow> sexec_exp \<sigma> e2 (\<lambda> \<sigma> t2. (sym_cond \<sigma> \<turnstile>\<^sub>s SBinopSafe t1 op t2) \<and> Q \<sigma> (SBinop t1 op t2)))"
+     Some bres \<Rightarrow> rtc_and (Q (sym_cond_add \<sigma> (t1 =\<^sub>s SBool (fst bres))) (SBool (snd bres)))
+       (sexec_exp (sym_cond_add \<sigma> (t1 =\<^sub>s (\<not>\<^sub>s SBool (fst bres)))) e2 Q)
+   | None \<Rightarrow> sexec_exp \<sigma> e2 (\<lambda> \<sigma> t2. 
+      rtc_and (sym_cond \<sigma> \<turnstile>\<^sub>s SBinopSafe t1 op t2, []) (Q \<sigma> (SBinop t1 op t2))))"
 
 | "sexec_exp_p \<sigma> (CondExp e1 e2 e3) Q = sexec_exp \<sigma> e1 (\<lambda> \<sigma> t1.
-    sexec_exp (sym_cond_add \<sigma> t1) e2 Q \<and> sexec_exp (sym_cond_add \<sigma> (\<not>\<^sub>s t1)) e3 Q)"
+    rtc_and (sexec_exp (sym_cond_add \<sigma> t1) e2 Q) 
+      (sexec_exp (sym_cond_add \<sigma> (\<not>\<^sub>s t1)) e3 Q))"
 
 | "sexec_exp_p \<sigma> (FieldAcc e f) Q = sexec_exp \<sigma> e (\<lambda> \<sigma> te.
-    sym_heap_extract \<sigma> te f (Some (SPerm 0)) (\<lambda> \<sigma> c.
-    sym_heap_do_add \<sigma> c (\<lambda> \<sigma>.
-    Q \<sigma> (chunk_val c))))"
+    sym_exp_p_acc_helper \<sigma> te f Q)"
 
 | "sexec_exp_p \<sigma> (Old l e) Q = sfail (''Not supported expression: Old'')"
 | "sexec_exp_p \<sigma> (Perm v va) Q = sfail (''Not supported expression: Perm'')"
@@ -529,27 +541,61 @@ fun sexec_exp :: "'a sym_state \<Rightarrow> pure_exp \<Rightarrow> ('a sym_stat
 | "sexec_exp_p \<sigma> (Unfolding _ _ _) Q = sfail (''Not supported expression: Unfolding'')"
 | "sexec_exp_p \<sigma> (Let _ _) Q = sfail (''Not supported expression: Let'')"
 | "sexec_exp_p \<sigma> (PExists _ _) Q = sfail (''Not supported expression: PExists'')"
-| "sexec_exp_p \<sigma> (PForall _ _) Q = sfail (''Not supported expression: PForall'')"*)
+| "sexec_exp_p \<sigma> (PForall _ _) Q = sfail (''Not supported expression: PForall'')"
+
+fun sexec_exp_c :: "'a sym_state \<Rightarrow> pure_exp \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ"
+  where
+  "sexec_exp_c \<sigma> (ELit l) Q = Q \<sigma> (SLit l)"
+
+| "sexec_exp_c \<sigma> (Var x) Q = (let t = SOME t. sym_store \<sigma> x = Some t in Q \<sigma> t)"
+
+| "sexec_exp_c \<sigma> (Unop op e) Q = sexec_exp \<sigma> e (\<lambda> \<sigma> t. Q \<sigma> (SUnop op t))"
+
+| "sexec_exp_c \<sigma> (Binop e1 op e2) Q = sexec_exp \<sigma> e1 (\<lambda> \<sigma> t1. 
+   case binop_lazy_bool op of 
+     Some bres \<Rightarrow> rtc_and (Q (sym_cond_add \<sigma> (t1 =\<^sub>s SBool (fst bres))) (SBool (snd bres)))
+       (sexec_exp (sym_cond_add \<sigma> (t1 =\<^sub>s (\<not>\<^sub>s SBool (fst bres)))) e2 Q)
+   | None \<Rightarrow> sexec_exp \<sigma> e2 (\<lambda> \<sigma> t2. 
+      rtc_and (sym_cond \<sigma> \<turnstile>\<^sub>s SBinopSafe t1 op t2, []) (Q \<sigma> (SBinop t1 op t2))))"
+
+| "sexec_exp_c \<sigma> (CondExp e1 e2 e3) Q = sexec_exp \<sigma> e1 (\<lambda> \<sigma> t1.
+    rtc_and (sexec_exp (sym_cond_add \<sigma> t1) e2 Q) 
+      (sexec_exp (sym_cond_add \<sigma> (\<not>\<^sub>s t1)) e3 Q))"
+
+| "sexec_exp_c \<sigma> (FieldAcc e f) Q = sexec_exp \<sigma> e (\<lambda> \<sigma> te.
+    sym_exp_c_acc_helper \<sigma> te f Q)"
+
+| "sexec_exp_c \<sigma> (Old l e) Q = sfail (''Not supported expression: Old'')"
+| "sexec_exp_c \<sigma> (Perm v va) Q = sfail (''Not supported expression: Perm'')"
+| "sexec_exp_c \<sigma> (PermPred v va) Q = sfail (''Not supported expression: PermPred'')"
+| "sexec_exp_c \<sigma> (FunApp f es) Q = sfail (''Not supported expression: FunApp'')"
+| "sexec_exp_c \<sigma> Result Q = sfail (''Not supported expression: Result'')"
+| "sexec_exp_c \<sigma> (Unfolding _ _ _) Q = sfail (''Not supported expression: Unfolding'')"
+| "sexec_exp_c \<sigma> (Let _ _) Q = sfail (''Not supported expression: Let'')"
+| "sexec_exp_c \<sigma> (PExists _ _) Q = sfail (''Not supported expression: PExists'')"
+| "sexec_exp_c \<sigma> (PForall _ _) Q = sfail (''Not supported expression: PForall'')"
 
 
-fun sproduce :: "'a sym_state \<Rightarrow> (pure_exp, pure_exp atomic_assert) assert \<Rightarrow> ('a sym_state \<Rightarrow> bool) \<Rightarrow> bool" where
-  "sproduce \<sigma> (Atomic (Pure e)) Q = sexec_exp \<sigma> e (\<lambda> \<sigma> t. Q (sym_cond_add \<sigma> t))"
+fun sproduce :: "'a sym_state \<Rightarrow> (pure_exp, pure_exp atomic_assert) assert \<Rightarrow> ('a sym_state \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
+  "sproduce \<sigma> (Atomic (Pure e)) Q = sexec_exp_p \<sigma> e (\<lambda> \<sigma> t. Q (sym_cond_add \<sigma> t))"
 | "sproduce \<sigma> (Atomic (Acc e f (PureExp ep))) Q =
-    sexec_exp \<sigma> e (\<lambda> \<sigma> te. sexec_exp \<sigma> ep (\<lambda> \<sigma> tep.
+    sexec_exp_p \<sigma> e (\<lambda> \<sigma> te. sexec_exp_p \<sigma> ep (\<lambda> \<sigma> tep.
     \<comment> \<open>TODO: weaken this?\<close>
-    (sym_cond \<sigma> \<turnstile>\<^sub>s \<not>\<^sub>s (tep =\<^sub>s SPerm 0)) \<and> (
-      \<exists> ty. sym_fields \<sigma> f = Some ty \<and> sym_gen_fresh \<sigma> ty (\<lambda> \<sigma> tv.
+    rtc_and (sym_cond \<sigma> \<turnstile>\<^sub>s \<not>\<^sub>s (tep =\<^sub>s SPerm 0), []) (
+      let ty = SOME ty. sym_fields \<sigma> f = Some ty in
+       sym_gen_fresh \<sigma> ty (\<lambda> \<sigma> tv.
        sym_heap_do_add \<sigma> \<lparr> chunk_field = f, chunk_recv = te, chunk_perm = tep, chunk_val = (SVar tv) \<rparr> Q))))"
 | "sproduce \<sigma> (Atomic (Acc e f Wildcard)) Q =
-    sexec_exp \<sigma> e (\<lambda> \<sigma> te. sym_gen_fresh \<sigma> TPerm (\<lambda> \<sigma> tp.
-      \<exists> ty. sym_fields \<sigma> f = Some ty \<and> sym_gen_fresh \<sigma> ty (\<lambda> \<sigma> tv.
+    sexec_exp_p \<sigma> e (\<lambda> \<sigma> te. sym_gen_fresh \<sigma> TPerm (\<lambda> \<sigma> tp.
+      let ty = SOME ty. sym_fields \<sigma> f = Some ty in
+      sym_gen_fresh \<sigma> ty (\<lambda> \<sigma> tv.
       sym_heap_do_add (sym_cond_add \<sigma> (SPerm 0 <\<^sub>s SVar tp))
         \<lparr> chunk_field = f, chunk_recv = te, chunk_perm = (SVar tp), chunk_val = (SVar tv) \<rparr> Q)))"
 | "sproduce \<sigma> (Atomic (AccPredicate _ _ _)) Q = sfail (''Not supported produce: AccPredicate'')"
 | "sproduce \<sigma> (Imp e A) Q =
-    sexec_exp \<sigma> e (\<lambda> \<sigma> t. Q (sym_cond_add \<sigma> (\<not>\<^sub>s t)) \<and> sproduce (sym_cond_add \<sigma> t) A Q)"
+    sexec_exp_p \<sigma> e (\<lambda> \<sigma> t. rtc_and (Q (sym_cond_add \<sigma> (\<not>\<^sub>s t))) (sproduce (sym_cond_add \<sigma> t) A Q))"
 | "sproduce \<sigma> (CondAssert e A1 A2) Q =
-    sexec_exp \<sigma> e (\<lambda> \<sigma> t. sproduce (sym_cond_add \<sigma> t) A1 Q \<and> sproduce (sym_cond_add \<sigma> (\<not>\<^sub>s t)) A2 Q)"
+    sexec_exp_p \<sigma> e (\<lambda> \<sigma> t. rtc_and (sproduce (sym_cond_add \<sigma> t) A1 Q) (sproduce (sym_cond_add \<sigma> (\<not>\<^sub>s t)) A2 Q))"
 | "sproduce \<sigma> (Star A1 A2) Q = sproduce \<sigma> A1 (\<lambda> \<sigma>. sproduce \<sigma> A2 Q)"
 | "sproduce \<sigma> (Wand A1 A2) Q = sfail (''Not supported produce: Wand'')"
 | "sproduce \<sigma> (ImpureAnd A1 A2) Q = sfail (''Not supported produce: ImpureAnd'')"
