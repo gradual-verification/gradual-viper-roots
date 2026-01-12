@@ -372,7 +372,36 @@ definition sym_opheap_extract :: "'a sym_state \<Rightarrow> 'a sym_exp \<Righta
    (sym_cond \<sigma>' \<turnstile>\<^sub>s te =\<^sub>s chunk_recv c \<and>\<^sub>s 
     (case p of Some tp \<Rightarrow> SPerm 0 \<le>\<^sub>s tp \<and>\<^sub>s tp \<le>\<^sub>s chunk_perm c | None \<Rightarrow> SPerm 0 <\<^sub>s chunk_perm c)) in Q (\<sigma>'\<lparr> sym_opheap := cs \<rparr>) c))"
 
-(* Note: sym_heap_extract may 
+definition alias_chunk0 ::
+"'a chunk
+  \<Rightarrow> 'a sym_state 
+  \<Rightarrow> 'a sym_exp 
+  \<Rightarrow> field_name
+  \<Rightarrow> 'a sym_exp option
+  \<Rightarrow> bool" where
+"alias_chunk0 c \<sigma> te f p =
+  (chunk_field c = f \<and>
+   (sym_cond \<sigma> \<turnstile>\<^sub>s te =\<^sub>s chunk_recv c \<and>\<^sub>s 
+    (case p of Some tp \<Rightarrow> SPerm 0 \<le>\<^sub>s tp \<and>\<^sub>s tp \<le>\<^sub>s chunk_perm c | None \<Rightarrow> SPerm 0 <\<^sub>s chunk_perm c)))"
+
+definition alias_chunk :: 
+"'a chunk
+  \<Rightarrow> 'a chunk list
+  => 'a sym_state 
+  \<Rightarrow> 'a sym_exp 
+  \<Rightarrow> field_name
+  \<Rightarrow> 'a sym_exp option
+  \<Rightarrow> bool" where
+"alias_chunk c cs \<sigma> te f p =
+  (sym_heap \<sigma> = c # cs \<and> alias_chunk0 c \<sigma> te f p)"
+
+definition heap_rem_acc :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> 'a sym_exp option \<Rightarrow> 'a sym_heap \<times> 'a chunk \<times> bool" where
+"heap_rem_acc \<sigma> te f p = 
+  (filter (\<lambda> c. alias_chunk0 c \<sigma> te f p) (sym_heap \<sigma>),
+  SOME c. \<exists> cs. alias_chunk c cs \<sigma> te f p,
+   \<exists> c cs. alias_chunk c cs \<sigma> te f p)"
+
+(* Note: sym_heap_extract may
   need to be modified to take in a Q that returns 'a ret_typ*)
 definition sym_exp_acc_helper ::  "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
 "sym_exp_acc_helper \<sigma> te f Q =
@@ -440,19 +469,19 @@ lemma sym_consolidate_frame :
   apply (clarsimp)
   apply (safe del:exI intro!:exI; assumption?; simp add:concretize_heap_cons) by fastforce+
 
-(*
+
 lemma sym_consolidate_drop :
   assumes "sym_heap \<sigma> = c # cs"
-  assumes "Q (\<sigma>\<lparr>sym_heap := cs\<rparr>)"
-  shows "sym_consolidate \<sigma> Q"
+  assumes "fst (Q (\<sigma>\<lparr>sym_heap := cs\<rparr>))"
+  shows "fst (sym_consolidate \<sigma> Q)"
   using assms unfolding sym_consolidate_def
   apply (clarsimp simp add: bind_eq_Some_conv)
   using greater_def by fastforce
 
 lemma sym_consolidate_swap :
   assumes "sym_heap \<sigma> = c1 # c2 # cs"
-  assumes "Q (\<sigma>\<lparr>sym_heap := c2 # c1 # cs\<rparr>)"
-  shows "sym_consolidate \<sigma> Q"
+  assumes "fst (Q (\<sigma>\<lparr>sym_heap := c2 # c1 # cs\<rparr>))"
+  shows "fst (sym_consolidate \<sigma> Q)"
   using assms unfolding sym_consolidate_def
   apply (clarsimp simp add: bind_eq_Some_conv assms(1))
   apply (rule exI[of _ "sym_cond \<sigma>"]; simp)
@@ -460,20 +489,20 @@ lemma sym_consolidate_swap :
   using plus_assoc3 succ_refl by fastforce
 
 lemma sym_consolidate_mono :
-  assumes "sym_consolidate \<sigma> Q1"
-  assumes "\<And> \<sigma>. Q1 \<sigma> \<Longrightarrow> Q2 \<sigma>"
-  shows "sym_consolidate \<sigma> Q2"
-  using assms unfolding sym_consolidate_def by blast
+  assumes "fst (sym_consolidate \<sigma> Q1)"
+  assumes "\<And> \<sigma>. fst (Q1 \<sigma>) \<Longrightarrow> fst (Q2 \<sigma>)"
+  shows "fst (sym_consolidate \<sigma> Q2)"
+  using assms unfolding sym_consolidate_def by simp blast
 
 lemma sym_consolidate_dup :
-  assumes "sym_consolidate \<sigma> (\<lambda> \<sigma>. sym_consolidate \<sigma> Q)"
-  shows "sym_consolidate \<sigma> Q"
+  assumes "fst(sym_consolidate \<sigma> (\<lambda> \<sigma>. sym_consolidate \<sigma> Q))"
+  shows "fst(sym_consolidate \<sigma> Q)"
   unfolding sym_consolidate_def
   using assms apply (clarsimp)
   apply (erule (4) sym_consolidateE)
   apply (erule sym_consolidateE; simp)
   using succ_trans by (smt (verit, ccfv_SIG))
-*)
+
 subsection \<open>symbolic evaluation\<close>
 
 definition sfail :: "'a \<Rightarrow> 'b ret_typ" where
@@ -591,6 +620,7 @@ fun sproduce :: "'a sym_state \<Rightarrow> (pure_exp, pure_exp atomic_assert) a
       sym_gen_fresh \<sigma> ty (\<lambda> \<sigma> tv.
       sym_heap_do_add (sym_cond_add \<sigma> (SPerm 0 <\<^sub>s SVar tp))
         \<lparr> chunk_field = f, chunk_recv = te, chunk_perm = (SVar tp), chunk_val = (SVar tv) \<rparr> Q)))"
+| "sproduce \<sigma> (Atomic (Acc e f Epsilon)) Q = sfail (''Not supported produce: AccEpsilon'')"
 | "sproduce \<sigma> (Atomic (AccPredicate _ _ _)) Q = sfail (''Not supported produce: AccPredicate'')"
 | "sproduce \<sigma> (Imp e A) Q =
     sexec_exp_p \<sigma> e (\<lambda> \<sigma> t. rtc_and (Q (sym_cond_add \<sigma> (\<not>\<^sub>s t))) (sproduce (sym_cond_add \<sigma> t) A Q))"
