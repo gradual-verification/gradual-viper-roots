@@ -63,15 +63,6 @@ definition zero_mask :: "('b, 'p::pos_perm) abstract_mask" where "zero_mask hl =
 definition add_masks :: "('b, 'p::pos_perm) abstract_mask \<Rightarrow> ('b, 'p::pos_perm) abstract_mask \<Rightarrow> ('b, 'p::pos_perm) abstract_mask" where
   "add_masks \<pi>1 \<pi>2 hl = (\<pi>1 hl + \<pi>2 hl)"
 
-text \<open>Runtime checks\<close>
-
-type_synonym 'a rtc_valuation = "var \<rightharpoonup> 'a val"
-type_synonym 'a runtime_check = "'a rtc_valuation \<rightharpoonup> 'a val"
-
-record 'a ret_struct = 
-  ret_stmt :: "stmt"
-  ret_rtc :: "'a runtime_check option"
-
 lemma padd_pos:
   assumes "p \<noteq> pnone"
   shows "p + q \<noteq> pnone"

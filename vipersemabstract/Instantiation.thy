@@ -1,5 +1,5 @@
 theory Instantiation
-  imports AbstractSemanticsProperties EquiViper EquiSemAuxLemma
+  imports AbstractSemanticsProperties EquiViper EquiSemAuxLemma SymbolicExecDef
 begin
 
 definition make_semantic_bexp :: "('a, ('a virtual_state)) interp \<Rightarrow> pure_exp \<Rightarrow> 'a equi_state bexp" where
@@ -175,7 +175,7 @@ fun sat_set :: "('a, 'a virtual_state) ValueAndBasicState.interp \<Rightarrow> (
 
 datatype 'a custom =
   FieldAssign "('a equi_state, address) exp" field_ident "('a equi_state, 'a val) exp"
-  | Runtime "'a runtime_check"
+  | Runtime "'a runtime_check list"
 (* | Label label *)
 
 definition has_write_perm_only :: "'a virtual_state \<Rightarrow> (address \<times> field_ident) \<Rightarrow> bool" where
@@ -511,6 +511,7 @@ qed
 fun wf_custom_stmt where
   "wf_custom_stmt \<Delta> (FieldAssign r f e) \<longleftrightarrow> sep_algebra_class.wf_exp r \<and> sep_algebra_class.wf_exp e
   \<and> (\<exists>ty. custom_context \<Delta> f = Some ty \<and> TypedEqui.typed_exp ty e)"
+| "wf_custom_stmt \<Delta> (Runtime l) \<longleftrightarrow> True"
 
 
 definition typed_value where
@@ -727,7 +728,13 @@ proof (rule self_framingI)
   qed
 qed
 
+(* 
 
+  forall r in rtcs. r.check w
+------------------------------
+  <runtime rtcs, w> \<longrightarrow> {w}
+
+*)
 
 inductive red_custom_stmt :: "('a val, field_ident \<rightharpoonup> 'a val set) abs_type_context \<Rightarrow> 'a custom \<Rightarrow> 'a equi_state \<Rightarrow> 'a equi_state set \<Rightarrow> bool"
   where
