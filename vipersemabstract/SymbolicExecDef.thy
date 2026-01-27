@@ -398,12 +398,12 @@ definition alias_chunk0 ::
   \<Rightarrow> 'a sym_state 
   \<Rightarrow> 'a sym_exp 
   \<Rightarrow> field_name
-  \<Rightarrow> 'a sym_exp option
+  \<Rightarrow> 'a sym_exp
   \<Rightarrow> bool" where
 "alias_chunk0 c \<sigma> te f p =
   (chunk_field c = f \<and>
    (sym_cond \<sigma> \<turnstile>\<^sub>s te =\<^sub>s chunk_recv c \<and>\<^sub>s 
-    (case p of Some tp \<Rightarrow> SPerm 0 \<le>\<^sub>s tp \<and>\<^sub>s tp \<le>\<^sub>s chunk_perm c | None \<Rightarrow> SPerm 0 <\<^sub>s chunk_perm c)))"
+    (SPerm 0 \<le>\<^sub>s p \<and>\<^sub>s p \<le>\<^sub>s chunk_perm c)))"
 
 definition alias_chunk1 ::
 "'a chunk
@@ -415,16 +415,65 @@ definition alias_chunk1 ::
   (chunk_field c = f \<and>
    (pc \<turnstile>\<^sub>s te =\<^sub>s chunk_recv c))"
 
-definition alias_chunk :: 
+definition alias_chunk_perm :: 
 "'a chunk
   \<Rightarrow> 'a chunk list
   => 'a sym_state 
   \<Rightarrow> 'a sym_exp 
   \<Rightarrow> field_name
-  \<Rightarrow> 'a sym_exp option
+  \<Rightarrow> 'a sym_exp
   \<Rightarrow> bool" where
-"alias_chunk c cs \<sigma> te f p =
+"alias_chunk_perm c cs \<sigma> te f p =
   (sym_heap \<sigma> = c # cs \<and> alias_chunk0 c \<sigma> te f p)"
+
+definition alias_chunk_noperm :: 
+"'a chunk
+  \<Rightarrow> 'a chunk list
+  \<Rightarrow> 'a sym_state 
+  \<Rightarrow> 'a sym_exp 
+  \<Rightarrow> field_name
+  \<Rightarrow> bool" where
+"alias_chunk_noperm c cs \<sigma> te f =
+  (sym_heap \<sigma> = c # cs \<and> alias_chunk1 c (sym_cond \<sigma>) te f)"
+
+definition potential_alias_filter ::
+"'a chunk list
+  \<Rightarrow> 'a sym_exp
+  \<Rightarrow> 'a sym_exp
+  \<Rightarrow> field_name
+  \<Rightarrow> 'a sym_exp
+  \<Rightarrow> 'a chunk list" where
+"potential_alias_filter h cond te f d =
+  (let h1 =
+      (filter (\<lambda> ch. (chunk_field ch = f) 
+          \<and> \<not>(cond \<turnstile>\<^sub>s \<not>\<^sub>s (te =\<^sub>s chunk_recv ch)) 
+          \<and> (cond \<turnstile>\<^sub>s chunk_perm ch \<le>\<^sub>s d)) h) in
+  (map (\<lambda> ch. 
+    if (chunk_field ch = f) 
+      \<and> \<not>(cond \<turnstile>\<^sub>s \<not>\<^sub>s (te =\<^sub>s chunk_recv ch)) 
+      \<and> (cond \<turnstile>\<^sub>s d <\<^sub>s chunk_perm ch) 
+    then ch\<lparr> chunk_perm := chunk_perm ch -\<^sub>s d\<rparr> 
+    else ch) h1))"
+
+definition proto_heap_rem_acc1 :: 
+"'a sym_state 
+  \<Rightarrow> 'a sym_exp 
+  \<Rightarrow> field_name 
+  \<Rightarrow> 'a sym_exp 
+  \<Rightarrow> 'a sym_heap \<times> 'a sym_exp \<times> bool" where
+"proto_heap_rem_acc1 \<sigma> te f p = 
+  (if (\<exists> c cs. alias_chunk_perm c cs \<sigma> te f p) then
+    let (c, cs) = SOME (c, cs). alias_chunk_perm c cs \<sigma> te f p in
+      (cs, chunk_val c, True)
+  else 
+    (if  (\<exists> c cs. alias_chunk_noperm c cs \<sigma> te f) then
+      let (c, cs) = SOME (c, cs). alias_chunk_noperm c cs \<sigma> te f in
+      let d = p -\<^sub>s chunk_perm c in
+      let h = potential_alias_filter (sym_heap \<sigma>) (sym_cond \<sigma>) te f d in
+        (h, SInt (sym_fresh \<sigma>), False)
+    else 
+      let h = potential_alias_filter (sym_heap \<sigma>) (sym_cond \<sigma>) te f p in
+        (h, SInt (sym_fresh \<sigma>), False)))"
 
 definition proto_heap_rem_acc :: "'a sym_heap \<Rightarrow> 'a path_cond \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> 'a sym_exp \<Rightarrow> 'a sym_heap \<times> 'a sym_exp \<times> bool" where
 "proto_heap_rem_acc h pc te f p =
