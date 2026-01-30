@@ -740,7 +740,12 @@ inductive red_custom_stmt :: "('a val, field_ident \<rightharpoonup> 'a val set)
   where
   RedFieldAssign: "\<lbrakk> r \<omega> = Some hl ; e \<omega> = Some v ; get_vm (get_state \<omega>) (hl, f) = 1; custom_context \<Delta> f = Some ty; v \<in> ty \<rbrakk>
   \<Longrightarrow> red_custom_stmt \<Delta> (FieldAssign r f e) \<omega> {set_state \<omega> (set_value (get_state \<omega>) (hl, f) v)}"
-  (* | RedRuntime: "red_custom_stmt \<Delta> (Runtime rtc) \<omega> {\<omega>}" *)
+| RedRuntimePath: "\<lbrakk> \<forall> rtc \<in> set (rtcs). (rtc_cond rtc) (get_store \<omega>) = Some (VBool True) 
+  \<longrightarrow> ((rtc_exp rtc) (get_store \<omega>) = Some (VRef (Address hl)) 
+    \<and> (rtc_perm rtc = RTCPerm rtcp) 
+    \<and> rtcp (get_store \<omega>) = Some (VPerm perm)
+    \<and> preal perm \<le> get_vm (get_state \<omega>) (hl, rtc_field rtc))\<rbrakk> 
+      \<Longrightarrow> red_custom_stmt \<Delta> (Runtime rtcs) \<omega> {\<omega>}"
 (* | RedLabel: "red_custom_stmt \<Delta> (Label l) \<omega> {set_trace \<omega> ((get_trace \<omega>)(l \<mapsto> get_state \<omega>)) }" *)
 
 inductive_cases red_custom_stmt_FieldAssign[elim!]: "red_custom_stmt \<Delta> (FieldAssign r f e) \<omega> S"

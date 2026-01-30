@@ -7,6 +7,9 @@ begin
 definition pif :: "bool \<Rightarrow> bool \<Rightarrow> bool \<Rightarrow> bool" where
 "pif b c1 c2 = ((b \<and> c1) \<or> c2)"
 
+definition prif :: "bool \<Rightarrow> 'a ret_typ \<Rightarrow> 'a ret_typ \<Rightarrow> 'a ret_typ" where
+"prif b c1 c2 = (if b then c1 else c2)"
+
 lemma pifI1 :
   assumes "b"
   assumes "c1"
@@ -62,21 +65,21 @@ method sexec =
 
 
 lemma sym_consolidate_nopI:
-  assumes "Q \<sigma>"
-  shows "sym_consolidate \<sigma> Q"
+  assumes "fst (Q \<sigma>)"
+  shows "fst (sym_consolidate \<sigma> Q)"
   using assms apply (cases \<sigma>; simp add:sym_consolidate_def) using succ_refl by fastforce
 
 lemma sym_heap_do_add_nopI [sexec_intro]:
-  assumes "Q (sym_heap_add \<sigma> c)"
-  shows "sym_heap_do_add \<sigma> c Q"
+  assumes "fst (Q (sym_heap_add \<sigma> c))"
+  shows "fst (sym_heap_do_add \<sigma> c Q)"
   using assms sym_consolidate_nopI apply (simp add:sym_heap_do_add_def) by fastforce
 
 
 fun sym_heap_extract_fun :: "'a sym_state \<Rightarrow> 'a chunk list \<Rightarrow> 'a sym_exp \<Rightarrow>
-    field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a chunk \<Rightarrow> bool) \<Rightarrow> bool" where
+    field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a chunk \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
   "sym_heap_extract_fun \<sigma> [] te f Q = sfail (''heap extract failed'', \<sigma>, te, f, Q)"
 | "sym_heap_extract_fun \<sigma> (c#cs) te f Q =
-    pif (f = chunk_field c \<and> (sym_cond \<sigma> \<turnstile>\<^sub>s te =\<^sub>s chunk_recv c))
+    prif (f = chunk_field c \<and> (sym_cond \<sigma> \<turnstile>\<^sub>s te =\<^sub>s chunk_recv c))
      (Q (\<sigma>\<lparr>sym_heap := cs\<rparr>) c)
      (sym_heap_extract_fun \<sigma> cs te f (\<lambda> \<sigma>. Q (sym_heap_add \<sigma> c)))"
 

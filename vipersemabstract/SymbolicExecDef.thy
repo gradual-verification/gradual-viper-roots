@@ -274,11 +274,13 @@ subsection \<open>symbolic state\<close>
 text \<open>Runtime checks\<close>
 
 datatype 'a rtc_perm = RTCPerm "'a sym_exp" | RTCEpsilon
-record 'a runtime_check = 
+record 'a runtime_check_acc = 
   rtc_field :: "field_name"
   rtc_exp :: "'a sym_exp" 
   rtc_perm :: "'a rtc_perm"
   rtc_cond :: "'a path_cond"
+
+type_synonym 'a runtime_check = (*RTCExp "'a sym_exp" | RTCAcc*) "'a runtime_check_acc"
 
 datatype 'a rtc_stmt = Stmt "'a runtime_check list" | Seq "'a rtc_stmt \<times> 'a rtc_stmt"
 
@@ -345,7 +347,7 @@ definition sym_opheap_do_add :: "'a sym_state \<Rightarrow> 'a chunk \<Rightarro
 (* Use sym_opheap_do_add *)
 definition sym_imprecise_rtc :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
 "sym_imprecise_rtc \<sigma> te f Q = 
-  (let p = Q (\<sigma> \<lparr>
+  (Q (\<sigma> \<lparr>
       sym_cond := (\<not>\<^sub>s(te =\<^sub>s SNull)) \<and>\<^sub>s sym_cond \<sigma>,
       sym_opheap := 
         \<lparr> chunk_field = f,
@@ -354,30 +356,27 @@ definition sym_imprecise_rtc :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightar
         chunk_val = te \<rparr> # sym_opheap \<sigma>,
       sym_runtime := 
         \<lparr> rtc_field = f, 
-        rtc_exp = te, 
-        rtc_perm = RTCEpsilon,
-        rtc_cond = sym_cond \<sigma> \<rparr> # sym_runtime \<sigma> \<rparr>) te in
-  (sym_imprecise \<sigma> \<and> (sym_cond \<sigma> \<turnstile>\<^sub>s \<not>\<^sub>s (te =\<^sub>s SNull)) \<and> fst p, snd p))"
+          rtc_exp = te, 
+          rtc_perm = RTCEpsilon,
+          rtc_cond = sym_cond \<sigma> \<rparr> # sym_runtime \<sigma> \<rparr>) te)"
 
 definition sym_imprecise_rtc_p :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
 "sym_imprecise_rtc_p \<sigma> te f Q = 
-  (let p = Q (\<sigma> \<lparr>
+  (Q (\<sigma> \<lparr>
       sym_cond := (\<not>\<^sub>s(te =\<^sub>s SNull)) \<and>\<^sub>s sym_cond \<sigma>,
       sym_opheap := 
         \<lparr> chunk_field = f,
         chunk_recv = SInt (sym_fresh \<sigma>), 
         chunk_perm = SPermEpsilon, 
-        chunk_val = te \<rparr> # sym_opheap \<sigma> \<rparr>) te in
-  (sym_imprecise \<sigma> \<and> (sym_cond \<sigma> \<turnstile>\<^sub>s \<not>\<^sub>s (te =\<^sub>s SNull)) \<and> fst p, snd p))"
+        chunk_val = te \<rparr> # sym_opheap \<sigma> \<rparr>) te)"
 
 definition sym_imprecise_rtc_c :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
 "sym_imprecise_rtc_c \<sigma> te f Q = 
-  (let p = Q (\<sigma> \<lparr> sym_runtime := 
+  (Q (\<sigma> \<lparr> sym_runtime := 
     \<lparr> rtc_field = f, 
     rtc_exp = te, 
     rtc_perm = RTCEpsilon, 
-    rtc_cond = sym_cond \<sigma> \<rparr> # sym_runtime \<sigma> \<rparr>) te in
-  (sym_imprecise \<sigma> \<and> (sym_cond \<sigma> \<turnstile>\<^sub>s \<not>\<^sub>s (te =\<^sub>s SNull)) \<and> fst p, snd p))"
+    rtc_cond = sym_cond \<sigma> \<rparr> # sym_runtime \<sigma> \<rparr>) te)"
 
 definition sym_stabilize :: "'a sym_state \<Rightarrow> ('a sym_state \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
 "sym_stabilize \<sigma> Q = sym_consolidate \<sigma> (\<lambda> \<sigma>'. 
@@ -393,25 +392,25 @@ definition sym_opheap_extract :: "'a sym_state \<Rightarrow> 'a sym_exp \<Righta
    (sym_cond \<sigma>' \<turnstile>\<^sub>s te =\<^sub>s chunk_recv c \<and>\<^sub>s 
     (case p of Some tp \<Rightarrow> SPerm 0 \<le>\<^sub>s tp \<and>\<^sub>s tp \<le>\<^sub>s chunk_perm c | None \<Rightarrow> SPerm 0 <\<^sub>s chunk_perm c)) in Q (\<sigma>'\<lparr> sym_opheap := cs \<rparr>) c))"
 
-definition alias_chunk0 ::
+definition alias_perm ::
 "'a chunk
-  \<Rightarrow> 'a sym_state 
+  \<Rightarrow> 'a path_cond 
   \<Rightarrow> 'a sym_exp 
   \<Rightarrow> field_name
   \<Rightarrow> 'a sym_exp
   \<Rightarrow> bool" where
-"alias_chunk0 c \<sigma> te f p =
+"alias_perm c pc te f p =
   (chunk_field c = f \<and>
-   (sym_cond \<sigma> \<turnstile>\<^sub>s te =\<^sub>s chunk_recv c \<and>\<^sub>s 
+   (pc \<turnstile>\<^sub>s te =\<^sub>s chunk_recv c \<and>\<^sub>s 
     (SPerm 0 \<le>\<^sub>s p \<and>\<^sub>s p \<le>\<^sub>s chunk_perm c)))"
 
-definition alias_chunk1 ::
+definition alias_noperm ::
 "'a chunk
   \<Rightarrow> 'a path_cond 
   \<Rightarrow> 'a sym_exp 
   \<Rightarrow> field_name
   \<Rightarrow> bool" where
-"alias_chunk1 c pc te f = 
+"alias_noperm c pc te f = 
   (chunk_field c = f \<and>
    (pc \<turnstile>\<^sub>s te =\<^sub>s chunk_recv c))"
 
@@ -424,7 +423,7 @@ definition alias_chunk_perm ::
   \<Rightarrow> 'a sym_exp
   \<Rightarrow> bool" where
 "alias_chunk_perm c cs \<sigma> te f p =
-  (sym_heap \<sigma> = c # cs \<and> alias_chunk0 c \<sigma> te f p)"
+  (sym_heap \<sigma> = c # cs \<and> alias_perm c (sym_cond \<sigma>) te f p)"
 
 definition alias_chunk_noperm :: 
 "'a chunk
@@ -434,7 +433,7 @@ definition alias_chunk_noperm ::
   \<Rightarrow> field_name
   \<Rightarrow> bool" where
 "alias_chunk_noperm c cs \<sigma> te f =
-  (sym_heap \<sigma> = c # cs \<and> alias_chunk1 c (sym_cond \<sigma>) te f)"
+  (sym_heap \<sigma> = c # cs \<and> alias_noperm c (sym_cond \<sigma>) te f)"
 
 definition potential_alias_filter ::
 "'a chunk list
@@ -445,9 +444,9 @@ definition potential_alias_filter ::
   \<Rightarrow> 'a chunk list" where
 "potential_alias_filter h cond te f d =
   (let h1 =
-      (filter (\<lambda> ch. (chunk_field ch = f) 
-          \<and> \<not>(cond \<turnstile>\<^sub>s \<not>\<^sub>s (te =\<^sub>s chunk_recv ch)) 
-          \<and> (cond \<turnstile>\<^sub>s chunk_perm ch \<le>\<^sub>s d)) h) in
+    (filter (\<lambda> ch. (chunk_field ch = f) 
+        \<and> \<not>(cond \<turnstile>\<^sub>s \<not>\<^sub>s (te =\<^sub>s chunk_recv ch)) 
+        \<and> (cond \<turnstile>\<^sub>s chunk_perm ch \<le>\<^sub>s d)) h) in
   (map (\<lambda> ch. 
     if (chunk_field ch = f) 
       \<and> \<not>(cond \<turnstile>\<^sub>s \<not>\<^sub>s (te =\<^sub>s chunk_recv ch)) 
@@ -455,27 +454,26 @@ definition potential_alias_filter ::
     then ch\<lparr> chunk_perm := chunk_perm ch -\<^sub>s d\<rparr> 
     else ch) h1))"
 
-definition proto_heap_rem_acc1 :: 
+definition proto_heap_rem_acc :: 
 "'a sym_state 
   \<Rightarrow> 'a sym_exp 
   \<Rightarrow> field_name 
   \<Rightarrow> 'a sym_exp 
-  \<Rightarrow> 'a sym_heap \<times> 'a sym_exp \<times> bool" where
-"proto_heap_rem_acc1 \<sigma> te f p = 
+  \<Rightarrow> 'a sym_heap \<times> bool" where
+"proto_heap_rem_acc \<sigma> te f p = 
   (if (\<exists> c cs. alias_chunk_perm c cs \<sigma> te f p) then
     let (c, cs) = SOME (c, cs). alias_chunk_perm c cs \<sigma> te f p in
-      (cs, chunk_val c, True)
+      (cs, True)
   else 
-    (if  (\<exists> c cs. alias_chunk_noperm c cs \<sigma> te f) then
-      let (c, cs) = SOME (c, cs). alias_chunk_noperm c cs \<sigma> te f in
-      let d = p -\<^sub>s chunk_perm c in
-      let h = potential_alias_filter (sym_heap \<sigma>) (sym_cond \<sigma>) te f d in
-        (h, SInt (sym_fresh \<sigma>), False)
-    else 
-      let h = potential_alias_filter (sym_heap \<sigma>) (sym_cond \<sigma>) te f p in
-        (h, SInt (sym_fresh \<sigma>), False)))"
+    let d = 
+      (if  (\<exists> c cs. alias_chunk_noperm c cs \<sigma> te f) 
+        then let (c, _) = SOME (c, cs). alias_chunk_noperm c cs \<sigma> te f in p -\<^sub>s chunk_perm c
+        else p)
+    in
+    let h = potential_alias_filter (sym_heap \<sigma>) (sym_cond \<sigma>) te f d in
+      (h, False))"
 
-definition proto_heap_rem_acc :: "'a sym_heap \<Rightarrow> 'a path_cond \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> 'a sym_exp \<Rightarrow> 'a sym_heap \<times> 'a sym_exp \<times> bool" where
+(*definition proto_heap_rem_acc :: "'a sym_heap \<Rightarrow> 'a path_cond \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> 'a sym_exp \<Rightarrow> 'a sym_heap \<times> 'a sym_exp \<times> bool" where
 "proto_heap_rem_acc h pc te f p =
   (let (h, v, q) = 
     foldl (\<lambda> (h, res, d) c. 
@@ -491,10 +489,8 @@ definition heap_rem_acc :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 
 "heap_rem_acc \<sigma> te f p = 
   (filter (\<lambda> c. alias_chunk0 c \<sigma> te f p) (sym_heap \<sigma>),
   SOME c. \<exists> cs. alias_chunk c cs \<sigma> te f p,
-   \<exists> c cs. alias_chunk c cs \<sigma> te f p)"
+   \<exists> c cs. alias_chunk c cs \<sigma> te f p)"*)
 
-(* Note: sym_heap_extract may
-  need to be modified to take in a Q that returns 'a ret_typ*)
 definition sym_exp_acc_helper ::  "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
 "sym_exp_acc_helper \<sigma> te f Q =
   rtc_or (
@@ -548,18 +544,19 @@ definition sym_consume_helper :: "'a sym_state \<Rightarrow> 'a sym_exp \<Righta
   (if \<not> sym_imprecise \<sigma> then 
     sym_heap_extract \<sigma> te f (Some tep) (\<lambda> \<sigma> c.
       sym_heap_do_add \<sigma> (c\<lparr> chunk_perm := chunk_perm c -\<^sub>s tep \<rparr>) Q)
-  else 
-    let (h1, d1, b1) = proto_heap_rem_acc (sym_heap \<sigma>) (sym_cond \<sigma>) te f tep in
-    let (h2, d2, b2) = proto_heap_rem_acc (sym_opheap \<sigma>) (sym_cond \<sigma>) te f tep in
+  else (if sym_cond \<sigma> \<turnstile>\<^sub>s SPerm 0 \<le>\<^sub>s tep then
+    let (h1, b1) = proto_heap_rem_acc \<sigma> te f tep in
+    let (h2, b2) = proto_heap_rem_acc \<sigma> te f tep in
     if b1 \<or> b2 then (Q \<sigma>)
     else (Q (\<sigma> \<lparr> 
-      sym_heap := h1, 
-      sym_opheap := h2, 
+      sym_heap := h1,
+      sym_opheap := h2,
       sym_runtime :=
         \<lparr> rtc_field = f, 
         rtc_exp = te, 
         rtc_perm = RTCPerm tep, 
-        rtc_cond = sym_cond \<sigma> \<rparr> # sym_runtime \<sigma> \<rparr>)))"
+        rtc_cond = sym_cond \<sigma> \<rparr> # sym_runtime \<sigma> \<rparr>))
+  else (False, Stmt [])))"
 
 lemma sym_consolidateE :
   assumes "fst (sym_consolidate \<sigma> Q)"
