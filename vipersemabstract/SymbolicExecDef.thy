@@ -451,7 +451,7 @@ definition potential_alias_filter ::
     if (chunk_field ch = f) 
       \<and> \<not>(cond \<turnstile>\<^sub>s \<not>\<^sub>s (te =\<^sub>s chunk_recv ch)) 
       \<and> (cond \<turnstile>\<^sub>s d <\<^sub>s chunk_perm ch) 
-    then ch\<lparr> chunk_perm := chunk_perm ch -\<^sub>s d\<rparr> 
+    then ch\<lparr> chunk_perm := chunk_perm ch -\<^sub>s d \<rparr>
     else ch) h1))"
 
 definition proto_heap_rem_acc :: 
@@ -614,8 +614,8 @@ lemma sym_consolidate_mono :
   using assms unfolding sym_consolidate_def by simp blast
 
 lemma sym_consolidate_dup :
-  assumes "fst(sym_consolidate \<sigma> (\<lambda> \<sigma>. sym_consolidate \<sigma> Q))"
-  shows "fst(sym_consolidate \<sigma> Q)"
+  assumes "fst (sym_consolidate \<sigma> (\<lambda> \<sigma>. sym_consolidate \<sigma> Q))"
+  shows "fst (sym_consolidate \<sigma> Q)"
   unfolding sym_consolidate_def
   using assms apply (clarsimp)
   apply (erule (4) sym_consolidateE)
@@ -751,10 +751,12 @@ fun sproduce :: "'a sym_state \<Rightarrow> (pure_exp, pure_exp atomic_assert) a
 | "sproduce \<sigma> (ImpureOr A1 A2) Q =  sfail (''Not supported produce: ImpureOr'')"
 | "sproduce \<sigma> (ForAll _ _) Q =  sfail (''Not supported produce: ForAll'')"
 | "sproduce \<sigma> (Exists _ _) Q =  sfail (''Not supported produce: Exists'')"
+| "sproduce \<sigma> (Imprecise A) Q = sproduce (\<sigma>\<lparr> sym_imprecise := True \<rparr>) A Q"
 
-
+(* Might need to do consolidation first for Pure and Imprecise *)
 fun sconsume :: "'a sym_state \<Rightarrow> (pure_exp, pure_exp atomic_assert) assert \<Rightarrow> ('a sym_state \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
-  "sconsume \<sigma> (Atomic (Pure e)) Q = sexec_exp \<sigma> e (\<lambda> \<sigma> t. rtc_and (sym_cond \<sigma> \<turnstile>\<^sub>s t, Stmt []) (Q \<sigma>))"
+  "sconsume \<sigma> (Atomic (Pure e)) Q = 
+    sym_consolidate \<sigma> (\<lambda> \<sigma>. sexec_exp \<sigma> e (\<lambda> \<sigma> t. rtc_and (sym_cond \<sigma> \<turnstile>\<^sub>s t, Stmt []) (Q \<sigma>)))"
 | "sconsume \<sigma> (Atomic (Acc e f (PureExp ep))) Q =
     sexec_exp \<sigma> e (\<lambda> \<sigma> te. sexec_exp \<sigma> ep (\<lambda> \<sigma> tep. sym_consume_helper \<sigma> te f tep Q))"
 | "sconsume \<sigma> (Atomic (Acc e f Wildcard)) Q =
@@ -762,6 +764,8 @@ fun sconsume :: "'a sym_state \<Rightarrow> (pure_exp, pure_exp atomic_assert) a
      sym_heap_do_add \<sigma> (c\<lparr> chunk_perm := SPermDiv (chunk_perm c) (SPerm 2) \<rparr>) Q))"
 | "sconsume \<sigma> (Atomic (Acc e f Epsilon)) Q = sfail(''Not supported consume: AccEpsilon'')"
 | "sconsume \<sigma> (Atomic (AccPredicate _ _ _)) Q = sfail (''Not supported consume: AccPredicate'')"
+| "sconsume \<sigma> (Imprecise A) Q = 
+    sconsume \<sigma> A (\<lambda> \<sigma>. Q (\<sigma>\<lparr> sym_imprecise := True, sym_heap := [], sym_opheap := [] \<rparr>))"
 | "sconsume \<sigma> (Imp e A) Q =
     sexec_exp \<sigma> e (\<lambda> \<sigma> t. rtc_and (Q (sym_cond_add \<sigma> (\<not>\<^sub>s t))) (sconsume (sym_cond_add \<sigma> t) A Q))"
 | "sconsume \<sigma> (CondAssert e A1 A2) Q =

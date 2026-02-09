@@ -522,7 +522,6 @@ lemma typed_valueI:
   shows "typed_value \<Delta> f v"
   by (simp add: assms typed_value_def)
 
-
 definition update_value where
   "update_value \<Delta> A r f e =
   { \<omega>' |\<omega>' \<omega> l v. typed_value \<Delta> f v \<and>
@@ -551,6 +550,13 @@ inductive SL_Custom :: "('a val, (field_ident \<rightharpoonup> 'a val set)) abs
   where
   RuleFieldAssign: "\<lbrakk> self_framing A; entails A { \<omega> |\<omega> l. get_m \<omega> (l, f) = 1 \<and> r \<omega> = Some l};
   framed_by_exp A r; framed_by_exp A e \<rbrakk> \<Longrightarrow> SL_Custom \<Delta> A (FieldAssign r f e) (update_value \<Delta> A r f e)"
+(*| RuleRuntime: "\<lbrakk> self_framing A; entails A { \<omega> |\<omega> hl rtcp perm.  \<forall> rtc \<in> set (rtcs). (rtc_cond rtc) (get_store \<omega>) = Some (VBool True) 
+  \<longrightarrow> ((rtc_exp rtc) (get_store \<omega>) = Some (VRef (Address hl)) 
+    \<and> (rtc_perm rtc = RTCPerm rtcp) 
+    \<and> ((rtcp (get_store \<omega>) = Some (VPerm perm)
+        \<and> preal perm \<le> get_vm (get_state \<omega>) (hl, rtc_field rtc))
+      \<or> (rtcp (get_store \<omega>) = Some (VEpsilon)
+        \<and> 0 < get_vm (get_state \<omega>) (hl, rtc_field rtc))))} \<rbrakk> \<Longrightarrow> SL_Custom \<Delta> A (Runtime rtcs) A"*)
 (* | RuleLabel: "SL_Custom \<Delta> A (Label l) (assertion_holds_at l A)" *)
 
 
@@ -740,11 +746,13 @@ inductive red_custom_stmt :: "('a val, field_ident \<rightharpoonup> 'a val set)
   where
   RedFieldAssign: "\<lbrakk> r \<omega> = Some hl ; e \<omega> = Some v ; get_vm (get_state \<omega>) (hl, f) = 1; custom_context \<Delta> f = Some ty; v \<in> ty \<rbrakk>
   \<Longrightarrow> red_custom_stmt \<Delta> (FieldAssign r f e) \<omega> {set_state \<omega> (set_value (get_state \<omega>) (hl, f) v)}"
-| RedRuntimePath: "\<lbrakk> \<forall> rtc \<in> set (rtcs). (rtc_cond rtc) (get_store \<omega>) = Some (VBool True) 
+| RedRuntime: "\<lbrakk> \<forall> rtc \<in> set (rtcs). (rtc_cond rtc) (get_store \<omega>) = Some (VBool True) 
   \<longrightarrow> ((rtc_exp rtc) (get_store \<omega>) = Some (VRef (Address hl)) 
     \<and> (rtc_perm rtc = RTCPerm rtcp) 
-    \<and> rtcp (get_store \<omega>) = Some (VPerm perm)
-    \<and> preal perm \<le> get_vm (get_state \<omega>) (hl, rtc_field rtc))\<rbrakk> 
+    \<and> ((rtcp (get_store \<omega>) = Some (VPerm perm)
+        \<and> preal perm \<le> get_vm (get_state \<omega>) (hl, rtc_field rtc))
+      \<or> (rtcp (get_store \<omega>) = Some (VEpsilon)
+        \<and> 0 < get_vm (get_state \<omega>) (hl, rtc_field rtc))))\<rbrakk> 
       \<Longrightarrow> red_custom_stmt \<Delta> (Runtime rtcs) \<omega> {\<omega>}"
 (* | RedLabel: "red_custom_stmt \<Delta> (Label l) \<omega> {set_trace \<omega> ((get_trace \<omega>)(l \<mapsto> get_state \<omega>)) }" *)
 
@@ -858,9 +866,6 @@ proof -
   ultimately show ?thesis by argo
 qed
 
-
-
-
 lemma SL_proof_aux_custom:
   assumes "\<forall>\<omega>\<in>SA. red_custom_stmt \<Delta> C (snd \<omega>) (f \<omega>)"
       and "wf_custom_stmt \<Delta> C"
@@ -870,6 +875,9 @@ proof (cases C)
   case (FieldAssign r g e)
   then show ?thesis
     using SL_proof_FieldAssign_easy assms by blast
+next
+  case (Runtime rtcs)
+  then show ?thesis sorry
 qed
 
 lemma custom_reciprocal:
@@ -903,6 +911,10 @@ proof (induct rule: red_custom_stmt.induct)
   case (RedFieldAssign r \<omega> hl e v f \<Delta> ty)
   then show ?case
     by (metis already_stable pperm_pnone_pgt singleton_iff stabilize_is_stable stabilize_set_value zero_neq_one)
+next
+  case(RedRuntime rtcs)
+  then show ?case
+    by (simp)
 qed
 
 lemma red_custom_well_typed:
@@ -925,6 +937,10 @@ proof (induct rule: red_custom_stmt.induct)
         by (metis (mono_tags, lifting) RedFieldAssign.hyps(4) RedFieldAssign.hyps(5) RedFieldAssign.prems(1) RedFieldAssign.prems(3) fun_upd_triv get_abs_state_def get_state_def get_state_set_state get_vh_vm_set_value(1) heap_typed_insert singletonD snd_conv well_typedE(1))
     qed
   qed
+next
+  case (RedRuntime rtcs)
+  then show ?case
+    by (simp)
 (*
 next
   case (RedLabel \<Delta> l \<omega>)
@@ -1080,7 +1096,13 @@ fun compile (* :: "('a, 'a virtual_state) interp \<Rightarrow> (field_name \<rig
 
 | "compile \<Delta> F (stmt.FieldAssign r f e) = abs_stmt.Custom (FieldAssign (make_semantic_rexp \<Delta> r) f (make_semantic_exp \<Delta> e))"
 
-
+fun compile_with_rtcs where
+  "compile_with_rtcs \<Delta> F st (rtc_stmt.Stmt []) = compile \<Delta> F st"
+| "compile_with_rtcs \<Delta> F st (rtc_stmt.Stmt rtcs) = 
+    abs_stmt.Seq (abs_stmt.Custom (Runtime rtcs)) (compile \<Delta> F st)"
+| "compile_with_rtcs \<Delta> F (stmt.Seq C1 C2) (rtc_stmt.Seq (st1, st2)) =
+     abs_stmt.Seq (compile_with_rtcs \<Delta> F C1 st1) (compile_with_rtcs \<Delta> F C2 st2)"
+| "compile_with_rtcs \<Delta> F _ _ = undefined"
 
 
 section \<open>red_stmt with (overapproximating) postcondition\<close>

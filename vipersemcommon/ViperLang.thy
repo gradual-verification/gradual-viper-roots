@@ -90,6 +90,7 @@ datatype ('p, 'atm) assert =
 
   | is_forall: ForAll vtyp "('p, 'atm) assert"
   | Exists vtyp "('p, 'atm) assert"
+  | Imprecise "('p, 'atm) assert"
 
 text \<open>Assertions \<^typ>\<open>('p, 'atm) assert\<close> are parametrized by the pure expressions \<^typ>\<open>'p\<close> as well as the
 atomic assertions \<^typ>\<open>'atm\<close> (assertions without impure connectives). Note that the atomic assertions usually include
@@ -111,6 +112,7 @@ fun is_pure :: "assertion \<Rightarrow> bool" where
 | "is_pure (ForAll _ A) \<longleftrightarrow> is_pure A"
 | "is_pure (Exists _ A) \<longleftrightarrow> is_pure A"
 | "is_pure (Wand _ _) \<longleftrightarrow> False"
+| "is_pure (Imprecise A) \<longleftrightarrow> is_pure A"
 
 (* currently missing:
 - x := new(_)

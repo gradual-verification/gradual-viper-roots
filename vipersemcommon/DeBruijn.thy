@@ -126,6 +126,7 @@ fun substitute_assertion :: "(var \<rightharpoonup> var) \<Rightarrow> assertion
 | "substitute_assertion \<sigma> (A && B) = (substitute_assertion \<sigma> A) && (substitute_assertion \<sigma> B)"
 | "substitute_assertion \<sigma> (A --* B) = (substitute_assertion \<sigma> A) --* (substitute_assertion \<sigma> B)"
 | "substitute_assertion \<sigma> (ForAll vtyp A) = ForAll vtyp (substitute_assertion (shift_up_substitution \<sigma>) A)"
+| "substitute_assertion \<sigma> (Imprecise A) = Imprecise (substitute_assertion \<sigma> A)"
 
 definition shift_down_set :: "var set \<Rightarrow> var set" where
   "shift_down_set S = { x - 1 |x. x \<in> S \<and> x \<ge> 1 }"

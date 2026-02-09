@@ -22,6 +22,7 @@ fun syntactic_mult :: "real \<Rightarrow> assertion \<Rightarrow> assertion"
   | "syntactic_mult p (Atomic (Acc e_r f e_p)) = (Atomic (Acc e_r f (real_mult_permexpr p e_p)))"
   | "syntactic_mult p (Atomic (AccPredicate pred_id e_args e_p)) = 
        (Atomic (AccPredicate pred_id e_args (real_mult_permexpr p e_p)))"
+  | "syntactic_mult p (Imprecise e) = (Imprecise e)"
   | "syntactic_mult p (Imp e A) = (Imp e (syntactic_mult p A))"
   | "syntactic_mult p (Star A B) = Star (syntactic_mult p A) (syntactic_mult p B)"
   | "syntactic_mult p (ForAll ty A) = (ForAll ty (syntactic_mult p A))"

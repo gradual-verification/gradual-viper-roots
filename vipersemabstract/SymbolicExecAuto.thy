@@ -7,9 +7,6 @@ begin
 definition pif :: "bool \<Rightarrow> bool \<Rightarrow> bool \<Rightarrow> bool" where
 "pif b c1 c2 = ((b \<and> c1) \<or> c2)"
 
-definition prif :: "bool \<Rightarrow> 'a ret_typ \<Rightarrow> 'a ret_typ \<Rightarrow> 'a ret_typ" where
-"prif b c1 c2 = (if b then c1 else c2)"
-
 lemma pifI1 :
   assumes "b"
   assumes "c1"
@@ -79,29 +76,49 @@ fun sym_heap_extract_fun :: "'a sym_state \<Rightarrow> 'a chunk list \<Rightarr
     field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a chunk \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
   "sym_heap_extract_fun \<sigma> [] te f Q = sfail (''heap extract failed'', \<sigma>, te, f, Q)"
 | "sym_heap_extract_fun \<sigma> (c#cs) te f Q =
-    prif (f = chunk_field c \<and> (sym_cond \<sigma> \<turnstile>\<^sub>s te =\<^sub>s chunk_recv c))
-     (Q (\<sigma>\<lparr>sym_heap := cs\<rparr>) c)
-     (sym_heap_extract_fun \<sigma> cs te f (\<lambda> \<sigma>. Q (sym_heap_add \<sigma> c)))"
+    (if (f = chunk_field c \<and> (sym_cond \<sigma> \<turnstile>\<^sub>s te =\<^sub>s chunk_recv c))
+    then (Q (\<sigma>\<lparr>sym_heap := cs\<rparr>) c)
+    else (sym_heap_extract_fun \<sigma> cs te f (\<lambda> \<sigma>. Q (sym_heap_add \<sigma> c))))"
 
 lemma sym_heap_extract_fun_sound [sexec_intro]:
-  assumes "sym_heap_extract_fun \<sigma> cs0 te f Q"
-  shows "sym_consolidate (\<sigma>\<lparr> sym_heap := cs0 \<rparr>) (\<lambda> \<sigma>. \<exists> c cs. sym_heap \<sigma> = c # cs \<and> chunk_field c = f \<and> (sym_cond \<sigma> \<turnstile>\<^sub>s te =\<^sub>s chunk_recv c) \<and> Q (\<sigma>\<lparr>sym_heap := cs\<rparr>) c)"
+  assumes "fst (sym_heap_extract_fun \<sigma> cs0 te f Q)"
+  shows "fst (sym_consolidate (\<sigma>\<lparr> sym_heap := cs0 \<rparr>) 
+      (\<lambda> \<sigma>. if \<exists> c cs. sym_heap \<sigma> = c # cs 
+            \<and> chunk_field c = f 
+            \<and> (sym_cond \<sigma> \<turnstile>\<^sub>s te =\<^sub>s chunk_recv c) 
+            \<and> fst (Q (\<sigma>\<lparr>sym_heap := cs\<rparr>) c) then
+      let (c, cs) = SOME (c, cs). sym_heap \<sigma> = c # cs 
+            \<and> chunk_field c = f 
+            \<and> (sym_cond \<sigma> \<turnstile>\<^sub>s te =\<^sub>s chunk_recv c) 
+            \<and> fst (Q (\<sigma>\<lparr>sym_heap := cs\<rparr>) c) in 
+        Q (\<sigma>\<lparr>sym_heap := cs\<rparr>) c else (False, Stmt [])))"
 using assms
 proof (induction cs0 arbitrary: \<sigma> Q)
   case Nil then show ?case by (simp add:sfail_def)
 next
   case (Cons a cs0)
   from Cons.prems show ?case
-    apply (simp add:pif_def)
-    apply (safe)
-    subgoal by (rule sym_consolidate_nopI; simp)
+    apply (simp)
+    apply (split if_split_asm)
+    subgoal
+      apply (rule sym_consolidate_nopI)
+      apply (clarsimp)
+      apply (rule someI2)
+       apply (fastforce+)
+      done
     subgoal
       apply (drule Cons.IH)
       apply (rule sym_consolidate_dup)
       apply (rule sym_consolidate_frame; simp)
       apply (rule sym_consolidate_mono, assumption)
-      apply (clarsimp)
-      by (rule sym_consolidate_swap; simp)
+      apply (split if_split_asm)
+      apply (rule sym_consolidate_swap)
+       apply (clarsimp)
+        apply (rule conjI)
+         apply (simp+)
+       apply (rule someI2)
+      apply (fastforce+)
+      done
     done
 qed
 
