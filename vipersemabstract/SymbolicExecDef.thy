@@ -380,7 +380,8 @@ definition sym_imprecise_rtc_c :: "'a sym_state \<Rightarrow> 'a sym_exp \<Right
 
 definition sym_stabilize :: "'a sym_state \<Rightarrow> ('a sym_state \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
 "sym_stabilize \<sigma> Q = sym_consolidate \<sigma> (\<lambda> \<sigma>'. 
-   rtc_and ((list_all (\<lambda> c. (sym_cond \<sigma>' \<turnstile>\<^sub>s SPerm 0 <\<^sub>s chunk_perm c)) (sym_heap \<sigma>')), Stmt []) (Q \<sigma>'))"
+   if (list_all (\<lambda> c. (sym_cond \<sigma>' \<turnstile>\<^sub>s SPerm 0 <\<^sub>s chunk_perm c)) (sym_heap \<sigma>')) 
+    then (Q \<sigma>') else (False, Stmt []))"
 
 definition sym_heap_extract :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> 'a sym_exp option \<Rightarrow> ('a sym_state \<Rightarrow> 'a chunk \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
 "sym_heap_extract \<sigma> te f p Q = sym_consolidate \<sigma> (\<lambda> \<sigma>'. (let (c, cs) = SOME (c, cs). sym_heap \<sigma>' = c # cs \<and> chunk_field c = f \<and>

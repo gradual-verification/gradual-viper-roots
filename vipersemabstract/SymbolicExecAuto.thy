@@ -123,46 +123,59 @@ next
 qed
 
 lemma sym_heap_extract_to_funI [sexec_intro]:
-  assumes "sym_heap_extract_fun \<sigma> (sym_heap \<sigma>) te f (\<lambda> \<sigma>' c.
-    (sym_cond \<sigma>' \<turnstile>\<^sub>s case p of Some p \<Rightarrow> SPerm 0 \<le>\<^sub>s p \<and>\<^sub>s p \<le>\<^sub>s chunk_perm c | None \<Rightarrow> SPerm 0 <\<^sub>s chunk_perm c) \<and> Q \<sigma>' c)"
-  shows "sym_heap_extract \<sigma> te f p Q"
+  assumes "fst (sym_heap_extract_fun \<sigma> (sym_heap \<sigma>) te f (\<lambda> \<sigma>' c.
+    if (sym_cond \<sigma>' \<turnstile>\<^sub>s case p of Some p \<Rightarrow> SPerm 0 \<le>\<^sub>s p \<and>\<^sub>s p \<le>\<^sub>s chunk_perm c | None \<Rightarrow> SPerm 0 <\<^sub>s chunk_perm c) 
+      then Q \<sigma>' c else (False, Stmt [])))"
+  shows "fst (sym_heap_extract \<sigma> te f p Q)"
   using assms apply (simp add:sym_heap_extract_def)
   apply (drule sym_heap_extract_fun_sound)
   apply (simp)
   apply (rule sym_consolidate_mono) apply (assumption)
-  by (clarsimp simp add:sym_implies_conj)
+  apply (simp split: if_split_asm)
+  apply (rule someI2)
+   apply (simp add: sym_implies_conj)
+   apply (fastforce+)
+  (*by (clarsimp simp add:sym_implies_conj)*)
+  done
 
 
-fun sym_stabilize_fun :: "'a sym_state \<Rightarrow> 'a chunk list \<Rightarrow> ('a sym_state \<Rightarrow> bool) \<Rightarrow> bool" where
+fun sym_stabilize_fun :: "'a sym_state \<Rightarrow> 'a chunk list \<Rightarrow> ('a sym_state \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
   "sym_stabilize_fun \<sigma> [] Q = Q (\<sigma>\<lparr> sym_heap := [] \<rparr>)"
 | "sym_stabilize_fun \<sigma> (c#cs) Q =
-    pif (sym_cond \<sigma> \<turnstile>\<^sub>s SPerm 0 <\<^sub>s chunk_perm c)
-      (sym_stabilize_fun \<sigma> cs (\<lambda> \<sigma>. Q (sym_heap_add \<sigma> c)))
-      (sym_stabilize_fun \<sigma> cs Q)"
+    (if (sym_cond \<sigma> \<turnstile>\<^sub>s SPerm 0 <\<^sub>s chunk_perm c)
+    then  (sym_stabilize_fun \<sigma> cs (\<lambda> \<sigma>. Q (sym_heap_add \<sigma> c)))
+    else  (sym_stabilize_fun \<sigma> cs Q))"
 
 lemma sym_stabilize_fun_preserves_cond :
-  assumes "sym_stabilize_fun \<sigma> cs Q"
-  shows "sym_stabilize_fun \<sigma> cs (\<lambda> \<sigma>'. sym_cond \<sigma> = sym_cond \<sigma>' \<and> Q \<sigma>')"
+  assumes "fst (sym_stabilize_fun \<sigma> cs Q)"
+  shows "fst (sym_stabilize_fun \<sigma> cs (\<lambda> \<sigma>'. 
+          if sym_cond \<sigma> = sym_cond \<sigma>' then Q \<sigma>' else (False, Stmt [])))"
   using assms by (induction cs arbitrary:\<sigma> Q; auto simp add:pif_def)
 
 lemma sym_stabilize_to_funI_ind :
-  assumes "sym_stabilize_fun \<sigma> cs Q"
-  shows "sym_stabilize (\<sigma>\<lparr>sym_heap := cs\<rparr>) Q"
+  assumes "fst (sym_stabilize_fun \<sigma> cs Q)"
+  shows "fst (sym_stabilize (\<sigma>\<lparr>sym_heap := cs\<rparr>) Q)"
   using assms
 proof (induction "cs" arbitrary: \<sigma> Q)
   case Nil
-  then show ?case by (auto intro: sym_consolidate_nopI simp add: sym_stabilize_def)
+  then show ?case
+    apply (auto simp add: sym_stabilize_def)
+    apply (rule sym_consolidate_nopI)
+    by (simp)
+    (*by (auto intro: sym_consolidate_nopI simp add: sym_stabilize_def)*)
 next
   case (Cons a cs)
   show ?case
     unfolding sym_stabilize_def
-    using Cons.prems apply (simp add:pif_def) apply (safe)
+    using Cons.prems apply (simp add:pif_def) (*apply (safe)*)
+    apply (split if_split_asm)
     subgoal
       apply (rule sym_consolidate_frame; simp)
       apply (rule sym_consolidate_mono)
        apply (rule Cons.IH[unfolded sym_stabilize_def])
        apply (rule sym_stabilize_fun_preserves_cond, assumption)
-      by (clarsimp)
+      apply (clarsimp)
+      by (simp split: if_split_asm)
     subgoal
       apply (rule sym_consolidate_dup)
       apply (rule sym_consolidate_drop; simp)
@@ -173,8 +186,8 @@ next
 qed
 
 lemma sym_stabilize_to_funI [sexec_intro]:
-  assumes "sym_stabilize_fun \<sigma> (sym_heap \<sigma>) Q"
-  shows "sym_stabilize \<sigma> Q"
+  assumes "fst (sym_stabilize_fun \<sigma> (sym_heap \<sigma>) Q)"
+  shows "fst (sym_stabilize \<sigma> Q)"
   using assms sym_stabilize_to_funI_ind by fastforce
 
 
