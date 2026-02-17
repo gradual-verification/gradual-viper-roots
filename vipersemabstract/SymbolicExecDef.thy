@@ -293,7 +293,7 @@ record 'a sym_state =
   sym_store_type :: "var \<rightharpoonup> vtyp"
   sym_fields :: "field_name \<rightharpoonup> vtyp"
   sym_imprecise :: "bool"
-  sym_runtime :: "'a runtime_check list"
+  sym_runtime :: "'a rtc_stmt"
 
 type_synonym 'a ret_typ = "bool \<times> 'a rtc_stmt"
 
@@ -309,6 +309,10 @@ fun rtc_and :: "'a ret_typ \<Rightarrow> 'a ret_typ \<Rightarrow> 'a ret_typ" wh
 fun rtc_seq :: "'a ret_typ \<Rightarrow> 'a ret_typ \<Rightarrow> 'a ret_typ" where
   "rtc_seq (True, s1) (True, s2) = (True, Seq (s1, s2))"
 | "rtc_seq _ _ = (False, Stmt [])"
+
+fun rtc_add :: "'a runtime_check \<Rightarrow> 'a rtc_stmt \<Rightarrow> 'a rtc_stmt" where
+  "rtc_add rtc (Stmt rtcl) = Stmt (rtc # rtcl)"
+| "rtc_add _ _ = Stmt []"
 
 abbreviation sym_cond_add :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a sym_state" where
 "sym_cond_add \<sigma> t \<equiv> \<sigma>\<lparr>sym_cond := t \<and>\<^sub>s sym_cond \<sigma>\<rparr>"
@@ -355,10 +359,10 @@ definition sym_imprecise_rtc :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightar
         chunk_perm = SPermEpsilon, 
         chunk_val = te \<rparr> # sym_opheap \<sigma>,
       sym_runtime := 
-        \<lparr> rtc_field = f, 
+        rtc_add (\<lparr> rtc_field = f, 
           rtc_exp = te, 
           rtc_perm = RTCEpsilon,
-          rtc_cond = sym_cond \<sigma> \<rparr> # sym_runtime \<sigma> \<rparr>) te)"
+          rtc_cond = sym_cond \<sigma> \<rparr>) (sym_runtime \<sigma>) \<rparr>) te)"
 
 definition sym_imprecise_rtc_p :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
 "sym_imprecise_rtc_p \<sigma> te f Q = 
@@ -373,10 +377,10 @@ definition sym_imprecise_rtc_p :: "'a sym_state \<Rightarrow> 'a sym_exp \<Right
 definition sym_imprecise_rtc_c :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
 "sym_imprecise_rtc_c \<sigma> te f Q = 
   (Q (\<sigma> \<lparr> sym_runtime := 
-    \<lparr> rtc_field = f, 
+    rtc_add (\<lparr> rtc_field = f, 
     rtc_exp = te, 
     rtc_perm = RTCEpsilon, 
-    rtc_cond = sym_cond \<sigma> \<rparr> # sym_runtime \<sigma> \<rparr>) te)"
+    rtc_cond = sym_cond \<sigma> \<rparr>) (sym_runtime \<sigma>) \<rparr>) te)"
 
 definition sym_stabilize :: "'a sym_state \<Rightarrow> ('a sym_state \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
 "sym_stabilize \<sigma> Q = sym_consolidate \<sigma> (\<lambda> \<sigma>'. 
@@ -553,10 +557,10 @@ definition sym_consume_helper :: "'a sym_state \<Rightarrow> 'a sym_exp \<Righta
       sym_heap := h1,
       sym_opheap := h2,
       sym_runtime :=
-        \<lparr> rtc_field = f, 
+        rtc_add (\<lparr> rtc_field = f, 
         rtc_exp = te, 
         rtc_perm = RTCPerm tep, 
-        rtc_cond = sym_cond \<sigma> \<rparr> # sym_runtime \<sigma> \<rparr>))
+        rtc_cond = sym_cond \<sigma> \<rparr>) (sym_runtime \<sigma>) \<rparr>))
   else (False, Stmt [])))"
 
 lemma sym_consolidateE :
@@ -757,20 +761,20 @@ fun sproduce :: "'a sym_state \<Rightarrow> (pure_exp, pure_exp atomic_assert) a
 (* Might need to do consolidation first for Pure and Imprecise *)
 fun sconsume :: "'a sym_state \<Rightarrow> (pure_exp, pure_exp atomic_assert) assert \<Rightarrow> ('a sym_state \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
   "sconsume \<sigma> (Atomic (Pure e)) Q = 
-    sym_consolidate \<sigma> (\<lambda> \<sigma>. sexec_exp \<sigma> e (\<lambda> \<sigma> t. rtc_and (sym_cond \<sigma> \<turnstile>\<^sub>s t, Stmt []) (Q \<sigma>)))"
+    sym_consolidate \<sigma> (\<lambda> \<sigma>. sexec_exp_c \<sigma> e (\<lambda> \<sigma> t. rtc_and (sym_cond \<sigma> \<turnstile>\<^sub>s t, Stmt []) (Q \<sigma>)))"
 | "sconsume \<sigma> (Atomic (Acc e f (PureExp ep))) Q =
-    sexec_exp \<sigma> e (\<lambda> \<sigma> te. sexec_exp \<sigma> ep (\<lambda> \<sigma> tep. sym_consume_helper \<sigma> te f tep Q))"
+    sexec_exp_c \<sigma> e (\<lambda> \<sigma> te. sexec_exp_c \<sigma> ep (\<lambda> \<sigma> tep. sym_consume_helper \<sigma> te f tep Q))"
 | "sconsume \<sigma> (Atomic (Acc e f Wildcard)) Q =
-    sexec_exp \<sigma> e (\<lambda> \<sigma> te. sym_heap_extract \<sigma> te f None (\<lambda> \<sigma> c. 
+    sexec_exp_c \<sigma> e (\<lambda> \<sigma> te. sym_heap_extract \<sigma> te f None (\<lambda> \<sigma> c. 
      sym_heap_do_add \<sigma> (c\<lparr> chunk_perm := SPermDiv (chunk_perm c) (SPerm 2) \<rparr>) Q))"
 | "sconsume \<sigma> (Atomic (Acc e f Epsilon)) Q = sfail(''Not supported consume: AccEpsilon'')"
 | "sconsume \<sigma> (Atomic (AccPredicate _ _ _)) Q = sfail (''Not supported consume: AccPredicate'')"
 | "sconsume \<sigma> (Imprecise A) Q = 
     sconsume \<sigma> A (\<lambda> \<sigma>. Q (\<sigma>\<lparr> sym_imprecise := True, sym_heap := [], sym_opheap := [] \<rparr>))"
 | "sconsume \<sigma> (Imp e A) Q =
-    sexec_exp \<sigma> e (\<lambda> \<sigma> t. rtc_and (Q (sym_cond_add \<sigma> (\<not>\<^sub>s t))) (sconsume (sym_cond_add \<sigma> t) A Q))"
+    sexec_exp_c \<sigma> e (\<lambda> \<sigma> t. rtc_and (Q (sym_cond_add \<sigma> (\<not>\<^sub>s t))) (sconsume (sym_cond_add \<sigma> t) A Q))"
 | "sconsume \<sigma> (CondAssert e A1 A2) Q =
-    sexec_exp \<sigma> e (\<lambda> \<sigma> t. rtc_and (sconsume (sym_cond_add \<sigma> t) A1 Q) (sconsume (sym_cond_add \<sigma> (\<not>\<^sub>s t)) A2 Q))"
+    sexec_exp_c \<sigma> e (\<lambda> \<sigma> t. rtc_and (sconsume (sym_cond_add \<sigma> t) A1 Q) (sconsume (sym_cond_add \<sigma> (\<not>\<^sub>s t)) A2 Q))"
 | "sconsume \<sigma> (Star A1 A2) Q = sconsume \<sigma> A1 (\<lambda> \<sigma>. sconsume \<sigma> A2 Q)"
 | "sconsume \<sigma> (Wand A1 A2) Q = sfail (''Not supported consume: Wand'')"
 | "sconsume \<sigma> (ImpureAnd A1 A2) Q = sfail (''Not supported consume: ImpureAnd'')"
@@ -786,7 +790,7 @@ fun sexec :: "'a sym_state \<Rightarrow> stmt \<Rightarrow> ('a sym_state \<Righ
 | "sexec \<sigma> (stmt.Assume A) Q = sfail (''Not supported statement: Assume'')"
 | "sexec \<sigma> (stmt.If e s1 s2) Q = 
     sexec_exp \<sigma> e (\<lambda> \<sigma> t. rtc_seq (sexec (sym_cond_add \<sigma> t) s1 Q) (sexec (sym_cond_add \<sigma> (\<not>\<^sub>s t)) s2 Q))"
-| "sexec \<sigma> (stmt.Seq s1 s2) Q = sexec \<sigma> s1 (\<lambda> \<sigma>. sexec \<sigma> s2 Q)"
+| "sexec \<sigma> (stmt.Seq s1 s2) Q = sexec \<sigma> s1 (\<lambda> \<sigma>. rtc_seq (True, sym_runtime \<sigma>) (sexec \<sigma> s2 Q))"
 | "sexec \<sigma> (stmt.LocalAssign v e) Q = (rtc_and (sym_store \<sigma> v \<noteq> None, Stmt []) 
     (sexec_exp \<sigma> e (\<lambda> \<sigma> t. Q (\<sigma>\<lparr>sym_store := (sym_store \<sigma>)(v \<mapsto> t) \<rparr>))))"
 | "sexec \<sigma> (stmt.Havoc v) Q = (let ty = SOME ty. sym_store_type \<sigma> v = Some ty in
@@ -810,7 +814,7 @@ fun sexec :: "'a sym_state \<Rightarrow> stmt \<Rightarrow> ('a sym_state \<Righ
 fun sinit :: "vtyp list \<Rightarrow> (field_name \<rightharpoonup> vtyp) \<Rightarrow> ('a sym_state \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
   "sinit [] fs Q = Q \<lparr>sym_store = Map.empty, sym_cond = SBool True, sym_heap = [],
      sym_opheap = [], sym_used = 0, sym_store_type = Map.empty, sym_fields = fs, 
-      sym_imprecise = False, sym_runtime = []\<rparr>"
+      sym_imprecise = False, sym_runtime = Stmt []\<rparr>"
 | "sinit (ty#tys) fs Q =
     sinit tys fs (\<lambda> \<sigma>.
     sym_gen_fresh \<sigma> ty (\<lambda> \<sigma> v. Q (\<sigma>

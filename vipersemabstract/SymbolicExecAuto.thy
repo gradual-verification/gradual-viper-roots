@@ -52,7 +52,7 @@ lemmas [sexec_solve_simp] =
 method sexec_solve =
   (auto intro!:sexec_solve_intro simp add:sexec_solve_simp)[]
 
-method sexec_step =
+method sexec_step =                                                 
   (simp add:sexec_simp |
    rule sexec_intro | 
    (match conclusion in "pif _ _ _" \<Rightarrow> \<open>pif sexec_solve\<close>))
@@ -197,11 +197,11 @@ inhale x
 exhale x
 *)
 schematic_goal sexec_test1 :
-  "sinit [TBool] Map.empty (\<lambda> \<sigma>.
+  "fst (sinit [TBool] Map.empty (\<lambda> \<sigma>.
    sexec \<sigma>
     (stmt.Seq (stmt.Inhale (Atomic (Pure (Var 0))))
          (stmt.Exhale (Atomic (Pure (Var 0)))))
-   (\<lambda> \<sigma>. \<sigma> = ?G))"
+   (\<lambda> \<sigma>. (\<sigma> = ?G, sym_runtime \<sigma>))))"
   apply (sexec)
    apply (sexec_solve)
   apply (sexec)
