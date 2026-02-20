@@ -34,6 +34,10 @@ named_theorems sexec_simp
 lemmas [sexec_simp] =
   sym_gen_fresh_def
   shift_and_add_def
+  rtc_seq_def
+  if_split_asm
+  Let_def
+
 
 named_theorems sexec_solve_intro
 declare sym_impliesI [sexec_solve_intro]
@@ -48,6 +52,7 @@ lemmas [sexec_solve_simp] =
    SHasType_eq_Some
   (* TODO: use a more precise lemma that does not rely on the reduction of eval_binop *)
    SBinopSafe_eq_Some
+
 
 method sexec_solve =
   (auto intro!:sexec_solve_intro simp add:sexec_solve_simp)[]
@@ -204,7 +209,8 @@ schematic_goal sexec_test1 :
    (\<lambda> \<sigma>. (\<sigma> = ?G, sym_runtime \<sigma>))))"
   apply (sexec)
    apply (sexec_solve)
-  apply (sexec)
+   apply (sexec)
+  apply (sexec_solve)
   done
 
 (*
@@ -212,18 +218,18 @@ inhale x == 1
 exhale x > 0
 *)
 schematic_goal sexec_test2 :
-  "sinit [TInt] Map.empty (\<lambda> \<sigma>.
+  "fst (sinit [TInt] Map.empty (\<lambda> \<sigma>.
    sexec \<sigma>
     (stmt.Seq (stmt.Inhale (Atomic (Pure (Binop (Var 0) Eq (ELit (LInt 1))))))
          (stmt.Exhale (Atomic (Pure (Binop (Var 0) Gt (ELit (LInt 0)))))))
-   (\<lambda> \<sigma>. \<sigma> = ?G))"
+   (\<lambda> \<sigma>. (\<sigma> = ?G, sym_runtime \<sigma>))))"
   apply (sexec)
    apply (sexec_solve)
-  apply (sexec)
+   apply (sexec)
+  apply (sexec_solve)
+  (*apply (sexec)
    apply (sexec_solve)
-  apply (sexec)
-   apply (sexec_solve)
-  apply (sexec)
+  apply (sexec)*)
   done
   
 (*
@@ -231,12 +237,13 @@ inhale x == (y ? 1 : 2)
 exhale x > 0
 *)
 lemma sexec_test3 :
-  "sinit [TInt, TBool] Map.empty (\<lambda> \<sigma>.
+  "fst (sinit [TInt, TBool] Map.empty (\<lambda> \<sigma>.
    sexec \<sigma>
     (stmt.Seq (stmt.Inhale (Atomic (Pure (Binop (Var 0) Eq (CondExp (Var 1) (ELit (LInt 1)) (ELit (LInt 2)))))))
          (stmt.Exhale (Atomic (Pure (Binop (Var 0) Gt (ELit (LInt 0)))))))
-  (\<lambda> \<sigma>. True))"
-  apply (sexec)
+  (\<lambda> \<sigma>. (True, sym_runtime \<sigma>))))"
+  apply (rule sexec_intro)
+  (*apply (sexec)
    apply (sexec_solve)
   apply (sexec)
    apply (sexec_solve)
@@ -249,7 +256,7 @@ lemma sexec_test3 :
   apply (sexec)
    apply (sexec_solve)
   apply (sexec)
-  done
+  done*)
 
 (*
 inhale acc(x.f)

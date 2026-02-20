@@ -297,22 +297,23 @@ record 'a sym_state =
 
 type_synonym 'a ret_typ = "bool \<times> 'a rtc_stmt"
 
-fun rtc_or :: "'a ret_typ \<Rightarrow> 'a ret_typ \<Rightarrow> 'a ret_typ" where
-  "rtc_or (True, rtc1) _ = (True, rtc1)"
-| "rtc_or _ (True, rtc2) = (True, rtc2)"
-| "rtc_or _ _ = (False, Stmt [])"
+definition rtc_or :: "'a ret_typ \<Rightarrow> 'a ret_typ \<Rightarrow> 'a ret_typ" where
+"rtc_or rt1 rt2 = (if (fst rt1) then rt1 else (if (fst rt2) then rt2 else (False, Stmt [])))"
 
-fun rtc_and :: "'a ret_typ \<Rightarrow> 'a ret_typ \<Rightarrow> 'a ret_typ" where
-  "rtc_and (True, Stmt rtc1) (True, Stmt rtc2) = (True, Stmt (rtc1 @ rtc2))"
-| "rtc_and _ _ = (False, Stmt [])"
+definition rtc_and :: "'a ret_typ \<Rightarrow> 'a ret_typ \<Rightarrow> 'a ret_typ" where
+"rtc_and rt1 rt2 =
+  (case (rt1, rt2) of
+  ((True, Stmt rtcs1), (True, Stmt rtcs2)) \<Rightarrow> (True, Stmt (rtcs1 @ rtcs2))
+  | (_, _) \<Rightarrow> (False, Stmt []))"
 
-fun rtc_seq :: "'a ret_typ \<Rightarrow> 'a ret_typ \<Rightarrow> 'a ret_typ" where
-  "rtc_seq (True, s1) (True, s2) = (True, Seq (s1, s2))"
-| "rtc_seq _ _ = (False, Stmt [])"
+definition rtc_seq :: "'a ret_typ \<Rightarrow> 'a ret_typ \<Rightarrow> 'a ret_typ" where
+"rtc_seq rt1 rt2 = (if (fst rt1) \<and> (fst rt2) then (True, Seq (snd rt1, snd rt2)) else (False, Stmt []))"
 
-fun rtc_add :: "'a runtime_check \<Rightarrow> 'a rtc_stmt \<Rightarrow> 'a rtc_stmt" where
-  "rtc_add rtc (Stmt rtcl) = Stmt (rtc # rtcl)"
-| "rtc_add _ _ = Stmt []"
+definition rtc_add :: "'a runtime_check \<Rightarrow> 'a rtc_stmt \<Rightarrow> 'a rtc_stmt" where
+"rtc_add rtc st =
+  (case st of
+  Stmt rtcl \<Rightarrow> Stmt (rtc # rtcl)
+  | _ \<Rightarrow> Stmt [])"
 
 abbreviation sym_cond_add :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a sym_state" where
 "sym_cond_add \<sigma> t \<equiv> \<sigma>\<lparr>sym_cond := t \<and>\<^sub>s sym_cond \<sigma>\<rparr>"
@@ -500,24 +501,20 @@ definition sym_exp_acc_helper ::  "'a sym_state \<Rightarrow> 'a sym_exp \<Right
 "sym_exp_acc_helper \<sigma> te f Q =
   rtc_or (
       rtc_or (
-      (sym_heap_extract \<sigma> te f (Some (SPerm 0)) (\<lambda> \<sigma> c.
-        sym_heap_do_add \<sigma> c (\<lambda> \<sigma>.
-        Q \<sigma> (chunk_val c)))))
-      (sym_opheap_extract \<sigma> te f (Some (SPerm 0)) (\<lambda> \<sigma> c.
-        sym_opheap_do_add \<sigma> c (\<lambda> \<sigma>.
-        Q \<sigma> (chunk_val c)))))
+      (sym_heap_extract \<sigma> te f (Some (SPerm 0))
+        (\<lambda> \<sigma> c. sym_heap_do_add \<sigma> c (\<lambda> \<sigma>. Q \<sigma> (chunk_val c)))))
+      (sym_opheap_extract \<sigma> te f (Some (SPerm 0))
+        (\<lambda> \<sigma> c. sym_opheap_do_add \<sigma> c (\<lambda> \<sigma>. Q \<sigma> (chunk_val c)))))
       (sym_imprecise_rtc \<sigma> te f Q)"
 
 definition sym_exp_p_acc_helper ::  "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
   "sym_exp_p_acc_helper \<sigma> te f Q =
   rtc_or (
       rtc_or (
-      (sym_heap_extract \<sigma> te f (Some (SPerm 0)) (\<lambda> \<sigma> c.
-        sym_heap_do_add \<sigma> c (\<lambda> \<sigma>.
-        Q \<sigma> (chunk_val c)))))
-      (sym_opheap_extract \<sigma> te f (Some (SPerm 0)) (\<lambda> \<sigma> c.
-        sym_opheap_do_add \<sigma> c (\<lambda> \<sigma>.
-        Q \<sigma> (chunk_val c)))))
+      (sym_heap_extract \<sigma> te f (Some (SPerm 0)) 
+        (\<lambda> \<sigma> c. sym_heap_do_add \<sigma> c (\<lambda> \<sigma>. Q \<sigma> (chunk_val c)))))
+      (sym_opheap_extract \<sigma> te f (Some (SPerm 0)) 
+        (\<lambda> \<sigma> c. sym_opheap_do_add \<sigma> c (\<lambda> \<sigma>. Q \<sigma> (chunk_val c)))))
       (sym_imprecise_rtc_p \<sigma> te f Q)"
 
 definition sym_exp_c_acc_helper ::  "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
@@ -645,7 +642,7 @@ fun sexec_exp :: "'a sym_state \<Rightarrow> pure_exp \<Rightarrow> ('a sym_stat
      Some bres \<Rightarrow> rtc_and (Q (sym_cond_add \<sigma> (t1 =\<^sub>s SBool (fst bres))) (SBool (snd bres)))
        (sexec_exp (sym_cond_add \<sigma> (t1 =\<^sub>s (\<not>\<^sub>s SBool (fst bres)))) e2 Q)
    | None \<Rightarrow> sexec_exp \<sigma> e2 (\<lambda> \<sigma> t2. 
-      rtc_and (sym_cond \<sigma> \<turnstile>\<^sub>s SBinopSafe t1 op t2, Stmt []) (Q \<sigma> (SBinop t1 op t2))))"
+      if sym_cond \<sigma> \<turnstile>\<^sub>s SBinopSafe t1 op t2 then (Q \<sigma> (SBinop t1 op t2)) else (False, Stmt [])))"
 
 | "sexec_exp \<sigma> (CondExp e1 e2 e3) Q = sexec_exp \<sigma> e1 (\<lambda> \<sigma> t1.
     rtc_and (sexec_exp (sym_cond_add \<sigma> t1) e2 Q) 
@@ -677,7 +674,7 @@ fun sexec_exp_p :: "'a sym_state \<Rightarrow> pure_exp \<Rightarrow> ('a sym_st
      Some bres \<Rightarrow> rtc_and (Q (sym_cond_add \<sigma> (t1 =\<^sub>s SBool (fst bres))) (SBool (snd bres)))
        (sexec_exp (sym_cond_add \<sigma> (t1 =\<^sub>s (\<not>\<^sub>s SBool (fst bres)))) e2 Q)
    | None \<Rightarrow> sexec_exp \<sigma> e2 (\<lambda> \<sigma> t2. 
-      rtc_and (sym_cond \<sigma> \<turnstile>\<^sub>s SBinopSafe t1 op t2, Stmt []) (Q \<sigma> (SBinop t1 op t2))))"
+      if sym_cond \<sigma> \<turnstile>\<^sub>s SBinopSafe t1 op t2 then (Q \<sigma> (SBinop t1 op t2)) else (False, Stmt [])))"
 
 | "sexec_exp_p \<sigma> (CondExp e1 e2 e3) Q = sexec_exp \<sigma> e1 (\<lambda> \<sigma> t1.
     rtc_and (sexec_exp (sym_cond_add \<sigma> t1) e2 Q) 
@@ -709,7 +706,7 @@ fun sexec_exp_c :: "'a sym_state \<Rightarrow> pure_exp \<Rightarrow> ('a sym_st
      Some bres \<Rightarrow> rtc_and (Q (sym_cond_add \<sigma> (t1 =\<^sub>s SBool (fst bres))) (SBool (snd bres)))
        (sexec_exp (sym_cond_add \<sigma> (t1 =\<^sub>s (\<not>\<^sub>s SBool (fst bres)))) e2 Q)
    | None \<Rightarrow> sexec_exp \<sigma> e2 (\<lambda> \<sigma> t2. 
-      rtc_and (sym_cond \<sigma> \<turnstile>\<^sub>s SBinopSafe t1 op t2, Stmt []) (Q \<sigma> (SBinop t1 op t2))))"
+      if sym_cond \<sigma> \<turnstile>\<^sub>s SBinopSafe t1 op t2 then (Q \<sigma> (SBinop t1 op t2)) else (False, Stmt [])))"
 
 | "sexec_exp_c \<sigma> (CondExp e1 e2 e3) Q = sexec_exp \<sigma> e1 (\<lambda> \<sigma> t1.
     rtc_and (sexec_exp (sym_cond_add \<sigma> t1) e2 Q) 
@@ -734,10 +731,12 @@ fun sproduce :: "'a sym_state \<Rightarrow> (pure_exp, pure_exp atomic_assert) a
 | "sproduce \<sigma> (Atomic (Acc e f (PureExp ep))) Q =
     sexec_exp_p \<sigma> e (\<lambda> \<sigma> te. sexec_exp_p \<sigma> ep (\<lambda> \<sigma> tep.
     \<comment> \<open>TODO: weaken this?\<close>
-    rtc_and (sym_cond \<sigma> \<turnstile>\<^sub>s \<not>\<^sub>s (tep =\<^sub>s SPerm 0), Stmt []) (
-      let ty = SOME ty. sym_fields \<sigma> f = Some ty in
+    if sym_cond \<sigma> \<turnstile>\<^sub>s \<not>\<^sub>s (tep =\<^sub>s SPerm 0) then 
+    (let ty = SOME ty. sym_fields \<sigma> f = Some ty in
        sym_gen_fresh \<sigma> ty (\<lambda> \<sigma> tv.
-       sym_heap_do_add \<sigma> \<lparr> chunk_field = f, chunk_recv = te, chunk_perm = tep, chunk_val = (SVar tv) \<rparr> Q))))"
+       sym_heap_do_add \<sigma> 
+        \<lparr> chunk_field = f, chunk_recv = te, chunk_perm = tep, chunk_val = (SVar tv) \<rparr> Q))
+    else (False, Stmt [])))"
 | "sproduce \<sigma> (Atomic (Acc e f Wildcard)) Q =
     sexec_exp_p \<sigma> e (\<lambda> \<sigma> te. sym_gen_fresh \<sigma> TPerm (\<lambda> \<sigma> tp.
       let ty = SOME ty. sym_fields \<sigma> f = Some ty in
@@ -761,7 +760,7 @@ fun sproduce :: "'a sym_state \<Rightarrow> (pure_exp, pure_exp atomic_assert) a
 (* Might need to do consolidation first for Pure and Imprecise *)
 fun sconsume :: "'a sym_state \<Rightarrow> (pure_exp, pure_exp atomic_assert) assert \<Rightarrow> ('a sym_state \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
   "sconsume \<sigma> (Atomic (Pure e)) Q = 
-    sym_consolidate \<sigma> (\<lambda> \<sigma>. sexec_exp_c \<sigma> e (\<lambda> \<sigma> t. rtc_and (sym_cond \<sigma> \<turnstile>\<^sub>s t, Stmt []) (Q \<sigma>)))"
+    sexec_exp_c \<sigma> e (\<lambda> \<sigma> t. if sym_cond \<sigma> \<turnstile>\<^sub>s t then (Q \<sigma>) else (False, Stmt []))"
 | "sconsume \<sigma> (Atomic (Acc e f (PureExp ep))) Q =
     sexec_exp_c \<sigma> e (\<lambda> \<sigma> te. sexec_exp_c \<sigma> ep (\<lambda> \<sigma> tep. sym_consume_helper \<sigma> te f tep Q))"
 | "sconsume \<sigma> (Atomic (Acc e f Wildcard)) Q =
@@ -791,8 +790,8 @@ fun sexec :: "'a sym_state \<Rightarrow> stmt \<Rightarrow> ('a sym_state \<Righ
 | "sexec \<sigma> (stmt.If e s1 s2) Q = 
     sexec_exp \<sigma> e (\<lambda> \<sigma> t. rtc_seq (sexec (sym_cond_add \<sigma> t) s1 Q) (sexec (sym_cond_add \<sigma> (\<not>\<^sub>s t)) s2 Q))"
 | "sexec \<sigma> (stmt.Seq s1 s2) Q = sexec \<sigma> s1 (\<lambda> \<sigma>. rtc_seq (True, sym_runtime \<sigma>) (sexec \<sigma> s2 Q))"
-| "sexec \<sigma> (stmt.LocalAssign v e) Q = (rtc_and (sym_store \<sigma> v \<noteq> None, Stmt []) 
-    (sexec_exp \<sigma> e (\<lambda> \<sigma> t. Q (\<sigma>\<lparr>sym_store := (sym_store \<sigma>)(v \<mapsto> t) \<rparr>))))"
+| "sexec \<sigma> (stmt.LocalAssign v e) Q = (if sym_store \<sigma> v \<noteq> None then
+    (sexec_exp \<sigma> e (\<lambda> \<sigma> t. Q (\<sigma>\<lparr>sym_store := (sym_store \<sigma>)(v \<mapsto> t) \<rparr>))) else (False, Stmt []))"
 | "sexec \<sigma> (stmt.Havoc v) Q = (let ty = SOME ty. sym_store_type \<sigma> v = Some ty in
     sym_gen_fresh \<sigma> ty (\<lambda> \<sigma> t. Q (\<sigma>\<lparr>sym_store := (sym_store \<sigma>)(v \<mapsto> (SVar t)) \<rparr>)))"
 | "sexec \<sigma> (stmt.FieldAssign e f e2) Q = sexec_exp \<sigma> e (\<lambda> \<sigma> t. sexec_exp \<sigma> e2 (\<lambda> \<sigma> t2. 
