@@ -35,8 +35,12 @@ lemmas [sexec_simp] =
   sym_gen_fresh_def
   shift_and_add_def
   rtc_seq_def
+  rtc_and_def
+  rtc_or_def
   if_split_asm
   Let_def
+  sym_consume_helper_def
+  sym_exp_p_acc_helper_def
 
 
 named_theorems sexec_solve_intro
@@ -210,7 +214,6 @@ schematic_goal sexec_test1 :
   apply (sexec)
    apply (sexec_solve)
    apply (sexec)
-  apply (sexec_solve)
   done
 
 (*
@@ -226,10 +229,10 @@ schematic_goal sexec_test2 :
   apply (sexec)
    apply (sexec_solve)
    apply (sexec)
-  apply (sexec_solve)
-  (*apply (sexec)
    apply (sexec_solve)
-  apply (sexec)*)
+  apply (sexec)
+   apply (sexec_solve)
+  apply (sexec)
   done
   
 (*
@@ -242,34 +245,12 @@ lemma sexec_test3 :
     (stmt.Seq (stmt.Inhale (Atomic (Pure (Binop (Var 0) Eq (CondExp (Var 1) (ELit (LInt 1)) (ELit (LInt 2)))))))
          (stmt.Exhale (Atomic (Pure (Binop (Var 0) Gt (ELit (LInt 0)))))))
   (\<lambda> \<sigma>. (True, sym_runtime \<sigma>))))"
-  apply (rule sexec_intro)
-  (*apply (sexec)
-   apply (sexec_solve)
   apply (sexec)
    apply (sexec_solve)
   apply (sexec)
    apply (sexec_solve)
   apply (sexec)
    apply (sexec_solve)
-  apply (sexec)
-   apply (sexec_solve)
-  apply (sexec)
-   apply (sexec_solve)
-  apply (sexec)
-  done*)
-
-(*
-inhale acc(x.f)
-exhale acc(x.f, 1/2) && acc(x.f, 1/2)
-*)
-lemma sexec_test4 :
-  "sinit [TRef] [f \<mapsto> TInt] (\<lambda> \<sigma>.
-   sexec \<sigma>
-    (stmt.Seq (stmt.Inhale (Atomic (Acc (Var 0) f (PureExp (ELit WritePerm)))))
-    (stmt.Seq (stmt.Exhale (Atomic (Acc (Var 0) f (PureExp (ELit (LPerm (1/2)))))))
-         (stmt.Exhale (Atomic (Acc (Var 0) f (PureExp (ELit (LPerm (1/2)))))))
-  ))
-  (\<lambda> \<sigma>. True))"
   apply (sexec)
    apply (sexec_solve)
   apply (sexec)
@@ -280,12 +261,38 @@ lemma sexec_test4 :
   done
 
 (*
+inhale acc(x.f)
+exhale acc(x.f, 1/2) && acc(x.f, 1/2)
+*)
+lemma sexec_test4 :
+  "fst (sinit [TRef] [f \<mapsto> TInt] (\<lambda> \<sigma>.
+   sexec \<sigma>
+    (stmt.Seq (stmt.Inhale (Atomic (Acc (Var 0) f (PureExp (ELit WritePerm)))))
+    (stmt.Seq (stmt.Exhale (Atomic (Acc (Var 0) f (PureExp (ELit (LPerm (1/2)))))))
+         (stmt.Exhale (Atomic (Acc (Var 0) f (PureExp (ELit (LPerm (1/2)))))))
+  ))
+  (\<lambda> \<sigma>. (True, sym_runtime \<sigma>))))"
+  apply (sexec)
+   apply (sexec_solve)
+  apply (sexec)
+   apply (sexec_solve)
+  apply (sexec)
+   apply (sexec_solve)
+    apply (sexec)
+     apply (sexec_solve)
+     apply (sexec)
+    apply (sexec_solve)
+  apply (sexec_solve)
+  apply (sexec_solve)
+  done
+
+(*
 inhale acc(x.f) && x.f == 1
 exhale acc(x.f, 1/2)
 exhale acc(x.f, 1/2) && x.f > 0
 *)
 lemma sexec_test5 :
-  "sinit [TRef] [f \<mapsto> TInt] (\<lambda> \<sigma>.
+  "fst (sinit [TRef] [f \<mapsto> TInt] (\<lambda> \<sigma>.
    sexec \<sigma>
     (stmt.Seq (stmt.Inhale (Star (Atomic (Acc (Var 0) f (PureExp (ELit WritePerm))))
                        (Atomic (Pure (Binop (FieldAcc (Var 0) f) Eq (ELit (LInt 1)))))))
@@ -293,7 +300,7 @@ lemma sexec_test5 :
          (stmt.Exhale (Star (Atomic (Acc (Var 0) f (PureExp (ELit (LPerm (1/2))))))
                        (Atomic (Pure (Binop (FieldAcc (Var 0) f) Gt (ELit (LInt 0)))))))
   ))
-  (\<lambda> \<sigma>. True))"
+  (\<lambda> \<sigma>. (True, sym_runtime \<sigma>))))"
   apply (sexec)
    apply (sexec_solve)
   apply (sexec)
