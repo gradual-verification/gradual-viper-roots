@@ -298,7 +298,8 @@ record 'a sym_state =
 type_synonym 'a ret_typ = "bool \<times> 'a rtc_stmt"
 
 definition rtc_or :: "'a ret_typ \<Rightarrow> 'a ret_typ \<Rightarrow> 'a ret_typ" where
-"rtc_or rt1 rt2 = (if (fst rt1) then rt1 else (if (fst rt2) then rt2 else (False, Stmt [])))"
+"rtc_or rt1 rt2 = ((fst rt1) \<or> (fst rt2),
+  (if (fst rt1) then snd rt1 else (if (fst rt2) then snd rt2 else Stmt [])))"
 
 definition rtc_and :: "'a ret_typ \<Rightarrow> 'a ret_typ \<Rightarrow> 'a ret_typ" where
 "rtc_and rt1 rt2 = (fst rt1 \<and> fst rt2, 
@@ -352,7 +353,7 @@ definition sym_opheap_do_add :: "'a sym_state \<Rightarrow> 'a chunk \<Rightarro
 (* Use sym_opheap_do_add *)
 definition sym_imprecise_rtc :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
 "sym_imprecise_rtc \<sigma> te f Q = 
-  (Q (\<sigma> \<lparr>
+  (let p = (Q (\<sigma> \<lparr>
       sym_cond := (\<not>\<^sub>s(te =\<^sub>s SNull)) \<and>\<^sub>s sym_cond \<sigma>,
       sym_opheap := 
         \<lparr> chunk_field = f,
@@ -363,25 +364,28 @@ definition sym_imprecise_rtc :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightar
         rtc_add (\<lparr> rtc_field = f, 
           rtc_exp = te, 
           rtc_perm = RTCEpsilon,
-          rtc_cond = sym_cond \<sigma> \<rparr>) (sym_runtime \<sigma>) \<rparr>) te)"
+          rtc_cond = sym_cond \<sigma> \<rparr>) (sym_runtime \<sigma>) \<rparr>) te)
+  in (sym_imprecise \<sigma> \<and> fst p, snd p))"
 
 definition sym_imprecise_rtc_p :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
 "sym_imprecise_rtc_p \<sigma> te f Q = 
-  (Q (\<sigma> \<lparr>
+  (let p = (Q (\<sigma> \<lparr>
       sym_cond := (\<not>\<^sub>s(te =\<^sub>s SNull)) \<and>\<^sub>s sym_cond \<sigma>,
       sym_opheap := 
         \<lparr> chunk_field = f,
         chunk_recv = SInt (sym_fresh \<sigma>), 
         chunk_perm = SPermEpsilon, 
-        chunk_val = te \<rparr> # sym_opheap \<sigma> \<rparr>) te)"
+        chunk_val = te \<rparr> # sym_opheap \<sigma> \<rparr>) te)
+  in (sym_imprecise \<sigma> \<and> fst p, snd p))"
 
 definition sym_imprecise_rtc_c :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
 "sym_imprecise_rtc_c \<sigma> te f Q = 
-  (Q (\<sigma> \<lparr> sym_runtime := 
+  (let p = (Q (\<sigma> \<lparr> sym_runtime := 
     rtc_add (\<lparr> rtc_field = f, 
     rtc_exp = te, 
     rtc_perm = RTCEpsilon, 
-    rtc_cond = sym_cond \<sigma> \<rparr>) (sym_runtime \<sigma>) \<rparr>) te)"
+    rtc_cond = sym_cond \<sigma> \<rparr>) (sym_runtime \<sigma>) \<rparr>) te)
+  in (sym_imprecise \<sigma> \<and> fst p, snd p))"
 
 definition sym_stabilize :: "'a sym_state \<Rightarrow> ('a sym_state \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
 "sym_stabilize \<sigma> Q = sym_consolidate \<sigma> (\<lambda> \<sigma>'. 
@@ -453,12 +457,12 @@ definition potential_alias_filter ::
     (filter (\<lambda> ch. (chunk_field ch = f) 
         \<and> \<not>(cond \<turnstile>\<^sub>s \<not>\<^sub>s (te =\<^sub>s chunk_recv ch)) 
         \<and> (cond \<turnstile>\<^sub>s chunk_perm ch \<le>\<^sub>s d)) h) in
-  (map (\<lambda> ch. 
-    if (chunk_field ch = f) 
-      \<and> \<not>(cond \<turnstile>\<^sub>s \<not>\<^sub>s (te =\<^sub>s chunk_recv ch)) 
-      \<and> (cond \<turnstile>\<^sub>s d <\<^sub>s chunk_perm ch) 
-    then ch\<lparr> chunk_perm := chunk_perm ch -\<^sub>s d \<rparr>
-    else ch) h1))"
+    (map (\<lambda> ch. 
+      if (chunk_field ch = f) 
+        \<and> \<not>(cond \<turnstile>\<^sub>s \<not>\<^sub>s (te =\<^sub>s chunk_recv ch)) 
+        \<and> (cond \<turnstile>\<^sub>s d <\<^sub>s chunk_perm ch) 
+      then ch\<lparr> chunk_perm := chunk_perm ch -\<^sub>s d \<rparr>
+      else ch) h1))"
 
 definition proto_heap_rem_acc :: 
 "'a sym_state 
@@ -682,7 +686,7 @@ fun sexec_exp_p :: "'a sym_state \<Rightarrow> pure_exp \<Rightarrow> ('a sym_st
     rtc_and (sexec_exp_p (sym_cond_add \<sigma> t1) e2 Q) 
       (sexec_exp_p (sym_cond_add \<sigma> (\<not>\<^sub>s t1)) e3 Q))"
 
-| "sexec_exp_p \<sigma> (FieldAcc e f) Q = sexec_exp \<sigma> e (\<lambda> \<sigma> te.
+| "sexec_exp_p \<sigma> (FieldAcc e f) Q = sexec_exp_p \<sigma> e (\<lambda> \<sigma> te.
     sym_exp_p_acc_helper \<sigma> te f Q)"
 
 | "sexec_exp_p \<sigma> (Old l e) Q = sfail (''Not supported expression: Old'')"

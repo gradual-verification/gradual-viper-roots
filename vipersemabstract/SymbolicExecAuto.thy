@@ -36,11 +36,8 @@ lemmas [sexec_simp] =
   shift_and_add_def
   rtc_seq_def
   rtc_and_def
-  rtc_or_def
-  if_split_asm
   Let_def
-  sym_consume_helper_def
-  sym_exp_p_acc_helper_def
+  (*sym_exp_p_acc_helper_def*)
 
 
 named_theorems sexec_solve_intro
@@ -56,6 +53,11 @@ lemmas [sexec_solve_simp] =
    SHasType_eq_Some
   (* TODO: use a more precise lemma that does not rely on the reduction of eval_binop *)
    SBinopSafe_eq_Some
+   if_split_asm
+   sym_consume_helper_def
+   sym_exp_p_acc_helper_def
+   sym_exp_c_acc_helper_def
+   rtc_or_def
 
 
 method sexec_solve =
@@ -281,6 +283,8 @@ lemma sexec_test4 :
     apply (sexec)
      apply (sexec_solve)
      apply (sexec)
+     apply (sexec_solve)
+     apply (sexec)
     apply (sexec_solve)
   apply (sexec_solve)
   apply (sexec_solve)
@@ -304,6 +308,11 @@ lemma sexec_test5 :
   apply (sexec)
    apply (sexec_solve)
   apply (sexec)
+  (*apply (sexec)
+   apply (sexec_solve)
+  apply (sexec)
+   apply (sexec_solve)*)
+  (*apply (sexec)
    apply (sexec_solve)
   apply (sexec)
    apply (sexec_solve)
@@ -316,9 +325,7 @@ lemma sexec_test5 :
   apply (sexec)
    apply (sexec_solve)
   apply (sexec)
-   apply (sexec_solve)
-  apply (sexec)
-  done
+  done*)
 
 (*
 inhale acc(x.f) && x.f == 1
