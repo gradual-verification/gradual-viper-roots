@@ -42,10 +42,11 @@ lemma def_interp_domains [simp] :
 definition fields_to_prog :: "(field_ident \<rightharpoonup> vtyp) \<Rightarrow> program" where
 "fields_to_prog F = undefined\<lparr>declared_fields := F \<rparr>"
 
-lemma declared_fields_fields_to_prog [simp] :
+
+(*lemma declared_fields_fields_to_prog [simp] :
   "declared_fields (fields_to_prog F) = F"
   by (simp add:fields_to_prog_def)
-
+*)
 section \<open>s2a translation functions and well formedness\<close>
 
 definition s2a_heap :: "'a valuation \<Rightarrow> 'a sym_heap \<Rightarrow> 'a virtual_state" where

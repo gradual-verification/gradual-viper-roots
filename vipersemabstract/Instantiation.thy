@@ -175,7 +175,7 @@ fun sat_set :: "('a, 'a virtual_state) ValueAndBasicState.interp \<Rightarrow> (
 
 datatype 'a custom =
   FieldAssign "('a equi_state, address) exp" field_ident "('a equi_state, 'a val) exp"
-  | Runtime "'a runtime_check list"
+  | Runtime "'a runtime_check"
 (* | Label label *)
 
 definition has_write_perm_only :: "'a virtual_state \<Rightarrow> (address \<times> field_ident) \<Rightarrow> bool" where
@@ -550,6 +550,15 @@ inductive SL_Custom :: "('a val, (field_ident \<rightharpoonup> 'a val set)) abs
   where
   RuleFieldAssign: "\<lbrakk> self_framing A; entails A { \<omega> |\<omega> l. get_m \<omega> (l, f) = 1 \<and> r \<omega> = Some l};
   framed_by_exp A r; framed_by_exp A e \<rbrakk> \<Longrightarrow> SL_Custom \<Delta> A (FieldAssign r f e) (update_value \<Delta> A r f e)"
+(*| RuleRuntime1: "\<lbrakk> self_framing A; 
+  entails A { \<omega> |\<omega> hl rtcp perm.
+      ((rtc_cond rtc) (get_store \<omega>) = Some (VBool True) \<and>
+      (rtc_exp rtc) (get_store \<omega>) = Some (VRef (Address hl)) \<and>
+      rtc_perm rtc = RTCPerm rtcp \<and>
+      rtcp (get_store \<omega>) = Some (VPerm perm) \<and>
+      preal perm \<le> get_vm (get_state \<omega>) (hl, rtc_field rtc))
+    \<or> ((rtc_cond rtc) (get_store \<omega>) = Some (VBool False)) } \<rbrakk>
+      \<Longrightarrow> SL_Custom \<Delta> A (Runtime rtc) A"*)
 (*| RuleRuntime: "\<lbrakk> self_framing A; entails A { \<omega> |\<omega> hl rtcp perm.  \<forall> rtc \<in> set (rtcs). (rtc_cond rtc) (get_store \<omega>) = Some (VBool True) 
   \<longrightarrow> ((rtc_exp rtc) (get_store \<omega>) = Some (VRef (Address hl)) 
     \<and> (rtc_perm rtc = RTCPerm rtcp) 
@@ -746,14 +755,22 @@ inductive red_custom_stmt :: "('a val, field_ident \<rightharpoonup> 'a val set)
   where
   RedFieldAssign: "\<lbrakk> r \<omega> = Some hl ; e \<omega> = Some v ; get_vm (get_state \<omega>) (hl, f) = 1; custom_context \<Delta> f = Some ty; v \<in> ty \<rbrakk>
   \<Longrightarrow> red_custom_stmt \<Delta> (FieldAssign r f e) \<omega> {set_state \<omega> (set_value (get_state \<omega>) (hl, f) v)}"
-| RedRuntime: "\<lbrakk> \<forall> rtc \<in> set (rtcs). (rtc_cond rtc) (get_store \<omega>) = Some (VBool True) 
-  \<longrightarrow> ((rtc_exp rtc) (get_store \<omega>) = Some (VRef (Address hl)) 
-    \<and> (rtc_perm rtc = RTCPerm rtcp) 
-    \<and> ((rtcp (get_store \<omega>) = Some (VPerm perm)
-        \<and> preal perm \<le> get_vm (get_state \<omega>) (hl, rtc_field rtc))
-      \<or> (rtcp (get_store \<omega>) = Some (VEpsilon)
-        \<and> 0 < get_vm (get_state \<omega>) (hl, rtc_field rtc))))\<rbrakk> 
-      \<Longrightarrow> red_custom_stmt \<Delta> (Runtime rtcs) \<omega> {\<omega>}"
+| RedRuntime1:
+  "\<lbrakk>(rtc_cond rtc) (get_store \<omega>) = Some (VBool True);
+  (rtc_exp rtc) (get_store \<omega>) = Some (VRef (Address hl));
+  rtc_perm rtc = RTCPerm rtcp;
+  rtcp (get_store \<omega>) = Some (VPerm perm);
+  preal perm \<le> get_vm (get_state \<omega>) (hl, rtc_field rtc)\<rbrakk>
+    \<Longrightarrow> red_custom_stmt \<Delta> (Runtime rtc) \<omega> {\<omega>}"
+| RedRuntime2: "\<lbrakk>(rtc_cond rtc) (get_store \<omega>) = Some (VBool False)\<rbrakk> 
+  \<Longrightarrow> red_custom_stmt \<Delta> (Runtime rtc) \<omega> {\<omega>}"
+| RedRuntimeEps: 
+  "\<lbrakk>(rtc_cond rtc) (get_store \<omega>) = Some (VBool True); 
+  (rtc_exp rtc) (get_store \<omega>) = Some (VRef (Address hl)); 
+  rtc_perm rtc = RTCPerm rtcp; 
+  rtcp (get_store \<omega>) = Some (VEpsilon);
+  0 < get_vm (get_state \<omega>) (hl, rtc_field rtc)\<rbrakk>
+    \<Longrightarrow>  red_custom_stmt \<Delta> (Runtime rtc) \<omega> {\<omega>}"
 (* | RedLabel: "red_custom_stmt \<Delta> (Label l) \<omega> {set_trace \<omega> ((get_trace \<omega>)(l \<mapsto> get_state \<omega>)) }" *)
 
 inductive_cases red_custom_stmt_FieldAssign[elim!]: "red_custom_stmt \<Delta> (FieldAssign r f e) \<omega> S"
@@ -866,6 +883,14 @@ proof -
   ultimately show ?thesis by argo
 qed
 
+lemma SL_proof_Runtime_easy:
+  assumes "\<forall>\<omega>\<in>SA. red_custom_stmt \<Delta> (Runtime rtc) (snd \<omega>) (f \<omega>)"
+      and "wf_custom_stmt \<Delta> (Runtime rtc)"
+      and "\<And>\<alpha>. \<alpha> \<in> SA \<Longrightarrow> stable (snd \<alpha>) \<and> TypedEqui.typed \<Delta> (snd \<alpha>)"
+    shows "SL_Custom \<Delta> (Stabilize (snd ` SA)) (Runtime rtc) (Stabilize (\<Union> (f ` SA)))"
+proof -
+  oops
+
 lemma SL_proof_aux_custom:
   assumes "\<forall>\<omega>\<in>SA. red_custom_stmt \<Delta> C (snd \<omega>) (f \<omega>)"
       and "wf_custom_stmt \<Delta> C"
@@ -912,9 +937,14 @@ proof (induct rule: red_custom_stmt.induct)
   then show ?case
     by (metis already_stable pperm_pnone_pgt singleton_iff stabilize_is_stable stabilize_set_value zero_neq_one)
 next
-  case(RedRuntime rtcs)
-  then show ?case
-    by (simp)
+  case (RedRuntime1 rtc)
+  then show ?case by (simp)
+next
+  case (RedRuntime2 rtc)
+  then show ?case by (simp)
+next
+  case (RedRuntimeEps rtc)
+  then show ?case by (simp)
 qed
 
 lemma red_custom_well_typed:
@@ -938,9 +968,14 @@ proof (induct rule: red_custom_stmt.induct)
     qed
   qed
 next
-  case (RedRuntime rtcs)
-  then show ?case
-    by (simp)
+  case (RedRuntime1 rtc)
+  then show ?case by (simp)
+next
+  case (RedRuntime2 rtc)
+  then show ?case by (simp)
+next
+  case (RedRuntimeEps rtc)
+  then show ?case by (simp)
 (*
 next
   case (RedLabel \<Delta> l \<omega>)
@@ -1098,8 +1133,9 @@ fun compile (* :: "('a, 'a virtual_state) interp \<Rightarrow> (field_name \<rig
 
 fun compile_with_rtcs where
   "compile_with_rtcs \<Delta> F st (rtc_stmt.Stmt []) = compile \<Delta> F st"
-| "compile_with_rtcs \<Delta> F st (rtc_stmt.Stmt rtcs) = 
-    abs_stmt.Seq (abs_stmt.Custom (Runtime rtcs)) (compile \<Delta> F st)"
+| "compile_with_rtcs \<Delta> F st (rtc_stmt.Stmt (rtc # rtcs)) = 
+    abs_stmt.Seq (abs_stmt.Custom (Runtime rtc)) 
+      (compile_with_rtcs \<Delta> F st (rtc_stmt.Stmt rtcs))"
 | "compile_with_rtcs \<Delta> F (stmt.Seq C1 C2) (rtc_stmt.Seq (st1, st2)) =
      abs_stmt.Seq (compile_with_rtcs \<Delta> F C1 st1) (compile_with_rtcs \<Delta> F C2 st2)"
 | "compile_with_rtcs \<Delta> F _ _ = undefined"
