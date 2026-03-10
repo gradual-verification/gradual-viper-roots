@@ -762,12 +762,12 @@ inductive red_custom_stmt :: "('a val, field_ident \<rightharpoonup> 'a val set)
   rtcp (get_store \<omega>) = Some (VPerm perm);
   preal perm \<le> get_vm (get_state \<omega>) (hl, rtc_field rtc)\<rbrakk>
     \<Longrightarrow> red_custom_stmt \<Delta> (Runtime rtc) \<omega> {\<omega>}"
-| RedRuntime2: "\<lbrakk>(rtc_cond rtc) (get_store \<omega>) = Some (VBool False)\<rbrakk> 
+| RedRuntime2: "\<lbrakk>(rtc_cond rtc) (get_store \<omega>) = Some (VBool False)\<rbrakk>
   \<Longrightarrow> red_custom_stmt \<Delta> (Runtime rtc) \<omega> {\<omega>}"
 | RedRuntimeEps: 
   "\<lbrakk>(rtc_cond rtc) (get_store \<omega>) = Some (VBool True); 
-  (rtc_exp rtc) (get_store \<omega>) = Some (VRef (Address hl)); 
-  rtc_perm rtc = RTCPerm rtcp; 
+  (rtc_exp rtc) (get_store \<omega>) = Some (VRef (Address hl));
+  rtc_perm rtc = RTCPerm rtcp;
   rtcp (get_store \<omega>) = Some (VEpsilon);
   0 < get_vm (get_state \<omega>) (hl, rtc_field rtc)\<rbrakk>
     \<Longrightarrow>  red_custom_stmt \<Delta> (Runtime rtc) \<omega> {\<omega>}"

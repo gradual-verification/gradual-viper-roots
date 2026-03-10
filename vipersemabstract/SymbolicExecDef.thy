@@ -350,7 +350,6 @@ definition sym_heap_do_add :: "'a sym_state \<Rightarrow> 'a chunk \<Rightarrow>
 definition sym_opheap_do_add :: "'a sym_state \<Rightarrow> 'a chunk \<Rightarrow> ('a sym_state \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
 "sym_opheap_do_add \<sigma> c Q = sym_consolidate (sym_opheap_add \<sigma> c) Q"
 
-(* Use sym_opheap_do_add *)
 definition sym_imprecise_rtc :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> ('a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
 "sym_imprecise_rtc \<sigma> te f Q = 
   (let p = (Q (\<sigma> \<lparr>
@@ -427,23 +426,25 @@ definition alias_noperm ::
 definition alias_chunk_perm :: 
 "'a chunk
   \<Rightarrow> 'a chunk list
-  => 'a sym_state 
+  \<Rightarrow> 'a sym_heap
+  \<Rightarrow> 'a path_cond 
   \<Rightarrow> 'a sym_exp 
   \<Rightarrow> field_name
   \<Rightarrow> 'a sym_exp
   \<Rightarrow> bool" where
-"alias_chunk_perm c cs \<sigma> te f p =
-  (sym_heap \<sigma> = c # cs \<and> alias_perm c (sym_cond \<sigma>) te f p)"
+"alias_chunk_perm c cs h pc te f p =
+  (h = c # cs \<and> alias_perm c pc te f p)"
 
 definition alias_chunk_noperm :: 
 "'a chunk
   \<Rightarrow> 'a chunk list
-  \<Rightarrow> 'a sym_state 
+  \<Rightarrow> 'a sym_heap
+  \<Rightarrow> 'a path_cond
   \<Rightarrow> 'a sym_exp 
   \<Rightarrow> field_name
   \<Rightarrow> bool" where
-"alias_chunk_noperm c cs \<sigma> te f =
-  (sym_heap \<sigma> = c # cs \<and> alias_noperm c (sym_cond \<sigma>) te f)"
+"alias_chunk_noperm c cs h pc te f =
+  (h = c # cs \<and> alias_noperm c pc te f)"
 
 definition potential_alias_filter ::
 "'a chunk list
@@ -460,28 +461,27 @@ definition potential_alias_filter ::
     (map (\<lambda> ch. 
       if (chunk_field ch = f) 
         \<and> \<not>(cond \<turnstile>\<^sub>s \<not>\<^sub>s (te =\<^sub>s chunk_recv ch)) 
-        \<and> (cond \<turnstile>\<^sub>s d <\<^sub>s chunk_perm ch) 
+        \<and> (cond \<turnstile>\<^sub>s d <\<^sub>s chunk_perm ch)
       then ch\<lparr> chunk_perm := chunk_perm ch -\<^sub>s d \<rparr>
       else ch) h1))"
 
-definition proto_heap_rem_acc :: 
-"'a sym_state 
-  \<Rightarrow> 'a sym_exp 
-  \<Rightarrow> field_name 
-  \<Rightarrow> 'a sym_exp 
+definition heap_rem_acc :: 
+"'a sym_heap
+  \<Rightarrow> 'a path_cond
+  \<Rightarrow> 'a sym_exp
+  \<Rightarrow> field_name
+  \<Rightarrow> 'a sym_exp
   \<Rightarrow> 'a sym_heap \<times> bool" where
-"proto_heap_rem_acc \<sigma> te f p = 
-  (if (\<exists> c cs. alias_chunk_perm c cs \<sigma> te f p) then
-    let (c, cs) = SOME (c, cs). alias_chunk_perm c cs \<sigma> te f p in
-      (cs, True)
+"heap_rem_acc h pc te f p = 
+  (if (\<exists> c cs. alias_chunk_perm c cs h pc te f p) then
+    let (c, cs) = SOME (c, cs). alias_chunk_perm c cs h pc te f p in (cs, True)
   else 
     let d = 
-      (if  (\<exists> c cs. alias_chunk_noperm c cs \<sigma> te f) 
-        then let (c, _) = SOME (c, cs). alias_chunk_noperm c cs \<sigma> te f in p -\<^sub>s chunk_perm c
+      (if (\<exists> c cs. alias_chunk_noperm c cs h pc te f)
+        then let (c, _) = SOME (c, cs). alias_chunk_noperm c cs h pc te f in p -\<^sub>s chunk_perm c
         else p)
     in
-    let h = potential_alias_filter (sym_heap \<sigma>) (sym_cond \<sigma>) te f d in
-      (h, False))"
+    let h = potential_alias_filter h pc te f d in (h, False))"
 
 (*definition proto_heap_rem_acc :: "'a sym_heap \<Rightarrow> 'a path_cond \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> 'a sym_exp \<Rightarrow> 'a sym_heap \<times> 'a sym_exp \<times> bool" where
 "proto_heap_rem_acc h pc te f p =
@@ -551,15 +551,15 @@ definition sym_consume_helper :: "'a sym_state \<Rightarrow> 'a sym_exp \<Righta
     sym_heap_extract \<sigma> te f (Some tep) (\<lambda> \<sigma> c.
       sym_heap_do_add \<sigma> (c\<lparr> chunk_perm := chunk_perm c -\<^sub>s tep \<rparr>) Q)
   else (if sym_cond \<sigma> \<turnstile>\<^sub>s SPerm 0 \<le>\<^sub>s tep then
-    let (h1, b1) = proto_heap_rem_acc \<sigma> te f tep in
-    let (h2, b2) = proto_heap_rem_acc \<sigma> te f tep in
+    let (h1, b1) = heap_rem_acc (sym_heap \<sigma>) (sym_cond \<sigma>) te f tep in
+    let (h2, b2) = heap_rem_acc (sym_opheap \<sigma>) (sym_cond \<sigma>) te f tep in
     if b1 \<or> b2 then (Q \<sigma>)
     else (Q (\<sigma> \<lparr> 
       sym_heap := h1,
       sym_opheap := h2,
       sym_runtime :=
-        rtc_add (\<lparr> rtc_field = f, 
-        rtc_exp = te, 
+        rtc_add (\<lparr> rtc_field = f,
+        rtc_exp = te,
         rtc_perm = RTCPerm tep, 
         rtc_cond = sym_cond \<sigma> \<rparr>) (sym_runtime \<sigma>) \<rparr>))
   else (False, Stmt [])))"
