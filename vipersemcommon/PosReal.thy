@@ -9,8 +9,8 @@ begin
 
 typedef preal = "{ r :: real |r. r \<ge> 0}" by fastforce
 
-(*fun identity :: "preal \<Rightarrow> real" where
-"identity p = p"*)
+definition to_preal :: "real \<Rightarrow> preal" where
+"to_preal p = Abs_preal p"
 
 setup_lifting type_definition_preal
 

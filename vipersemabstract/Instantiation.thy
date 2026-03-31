@@ -171,6 +171,7 @@ fun sat_set :: "('a, 'a virtual_state) ValueAndBasicState.interp \<Rightarrow> (
 (* | "\<Delta> \<Turnstile> \<langle>Exists ty A\<rangle> \<longleftrightarrow> (\<exists>v \<in> set_from_type (domains \<Delta>) ty. \<Delta> \<Turnstile> \<langle>A; shift_and_add_equi_state \<omega> v\<rangle>)" *)
 | "(\<langle>\<Delta>, F\<rangle> \<Turnstile> \<langle>ImpureAnd A B\<rangle>) = \<langle>\<Delta>, F\<rangle> \<Turnstile> \<langle>A\<rangle> \<inter> \<langle>\<Delta>, F\<rangle> \<Turnstile> \<langle>B\<rangle>"
 | "(\<langle>\<Delta>, F\<rangle> \<Turnstile> \<langle>ImpureOr A B\<rangle>) = \<langle>\<Delta>, F\<rangle> \<Turnstile> \<langle>A\<rangle> \<union> \<langle>\<Delta>, F\<rangle> \<Turnstile> \<langle>B\<rangle>"
+| "(\<langle>\<Delta>, F\<rangle> \<Turnstile> \<langle>Imprecise A\<rangle>) = (\<langle>\<Delta>, F\<rangle> \<Turnstile> \<langle>A\<rangle>)"
 
 
 datatype 'a custom =
@@ -550,15 +551,15 @@ inductive SL_Custom :: "('a val, (field_ident \<rightharpoonup> 'a val set)) abs
   where
   RuleFieldAssign: "\<lbrakk> self_framing A; entails A { \<omega> |\<omega> l. get_m \<omega> (l, f) = 1 \<and> r \<omega> = Some l};
   framed_by_exp A r; framed_by_exp A e \<rbrakk> \<Longrightarrow> SL_Custom \<Delta> A (FieldAssign r f e) (update_value \<Delta> A r f e)"
-(*| RuleRuntime1: "\<lbrakk> self_framing A; 
+| RuleRuntime: "\<lbrakk> self_framing A; 
   entails A { \<omega> |\<omega> hl rtcp perm.
       ((rtc_cond rtc) (get_store \<omega>) = Some (VBool True) \<and>
       (rtc_exp rtc) (get_store \<omega>) = Some (VRef (Address hl)) \<and>
       rtc_perm rtc = RTCPerm rtcp \<and>
       rtcp (get_store \<omega>) = Some (VPerm perm) \<and>
-      preal perm \<le> get_vm (get_state \<omega>) (hl, rtc_field rtc))
+      to_preal perm \<le> get_vm (get_state \<omega>) (hl, rtc_field rtc))
     \<or> ((rtc_cond rtc) (get_store \<omega>) = Some (VBool False)) } \<rbrakk>
-      \<Longrightarrow> SL_Custom \<Delta> A (Runtime rtc) A"*)
+      \<Longrightarrow> SL_Custom \<Delta> A (Runtime rtc) A"
 (*| RuleRuntime: "\<lbrakk> self_framing A; entails A { \<omega> |\<omega> hl rtcp perm.  \<forall> rtc \<in> set (rtcs). (rtc_cond rtc) (get_store \<omega>) = Some (VBool True) 
   \<longrightarrow> ((rtc_exp rtc) (get_store \<omega>) = Some (VRef (Address hl)) 
     \<and> (rtc_perm rtc = RTCPerm rtcp) 
@@ -760,10 +761,10 @@ inductive red_custom_stmt :: "('a val, field_ident \<rightharpoonup> 'a val set)
   (rtc_exp rtc) (get_store \<omega>) = Some (VRef (Address hl));
   rtc_perm rtc = RTCPerm rtcp;
   rtcp (get_store \<omega>) = Some (VPerm perm);
-  preal perm \<le> get_vm (get_state \<omega>) (hl, rtc_field rtc)\<rbrakk>
+  to_preal perm \<le> get_vm (get_state \<omega>) (hl, rtc_field rtc)\<rbrakk>
     \<Longrightarrow> red_custom_stmt \<Delta> (Runtime rtc) \<omega> {\<omega>}"
 | RedRuntime2: "\<lbrakk>(rtc_cond rtc) (get_store \<omega>) = Some (VBool False)\<rbrakk>
-  \<Longrightarrow> red_custom_stmt \<Delta> (Runtime rtc) \<omega> {\<omega>}"
+    \<Longrightarrow> red_custom_stmt \<Delta> (Runtime rtc) \<omega> {\<omega>}"
 | RedRuntimeEps: 
   "\<lbrakk>(rtc_cond rtc) (get_store \<omega>) = Some (VBool True); 
   (rtc_exp rtc) (get_store \<omega>) = Some (VRef (Address hl));
@@ -889,7 +890,15 @@ lemma SL_proof_Runtime_easy:
       and "\<And>\<alpha>. \<alpha> \<in> SA \<Longrightarrow> stable (snd \<alpha>) \<and> TypedEqui.typed \<Delta> (snd \<alpha>)"
     shows "SL_Custom \<Delta> (Stabilize (snd ` SA)) (Runtime rtc) (Stabilize (\<Union> (f ` SA)))"
 proof -
-  oops
+  let ?A = "Stabilize (snd ` SA)"
+
+  have "SL_Custom \<Delta> ?A (custom.Runtime rtc) ?A"
+  proof (rule RuleRuntime)
+    show "self_framing (Stabilize (snd ` SA))"
+      by simp
+  next
+    then show ?thesis by simp
+    oops
 
 lemma SL_proof_aux_custom:
   assumes "\<forall>\<omega>\<in>SA. red_custom_stmt \<Delta> C (snd \<omega>) (f \<omega>)"
@@ -903,6 +912,7 @@ proof (cases C)
 next
   case (Runtime rtcs)
   then show ?thesis sorry
+    (*using SL_proof_Runtime_easy assms by blast*)
 qed
 
 lemma custom_reciprocal:
