@@ -225,7 +225,7 @@ subsection \<open>eliminating symbolic execution helper functions\<close>
 
 lemma sym_gen_freshE :
   fixes "f"
-  assumes "sym_gen_fresh \<sigma> ty Q"
+  assumes "fst (sym_gen_fresh \<sigma> ty Q)"
   assumes "\<omega> \<succeq> s2a_state V (sym_store \<sigma>) (sym_heap \<sigma>)"
   assumes "s2a_state_wf \<Lambda> F V \<sigma>"
   assumes "v \<in> sem_vtyp def_domains ty"
@@ -239,14 +239,14 @@ lemma sym_gen_freshE :
     sym_used \<sigma>' = Suc (sym_used \<sigma>) \<Longrightarrow>
     f V' = f V \<Longrightarrow>
     valu_indep (sym_used \<sigma>') f \<Longrightarrow>
-    Q \<sigma>' x \<Longrightarrow>
+    fst (Q \<sigma>' x) \<Longrightarrow>
     P"
   shows "P"
 proof (rule HP)
   define \<sigma>' where H\<sigma>' : "\<sigma>' = (sym_cond_add (\<sigma>\<lparr>sym_used := Suc (sym_used \<sigma>)\<rparr>) (SHasType ty (sym_fresh \<sigma>)))"
   define V' where HV' : "V' = V(sym_used \<sigma> \<mapsto> v)"
   have Hag : "valu_agree (sym_used \<sigma>) V V'" by (simp add:valu_agree_def HV')
-  show "Q \<sigma>' (sym_fresh \<sigma>)"
+  show "fst (Q \<sigma>' (sym_fresh \<sigma>))"
     using assms(1) by (simp add:sym_gen_fresh_def H\<sigma>')
   show "valu_agree (sym_used \<sigma>) V V'" by (simp add:Hag)
   show "V' (sym_fresh \<sigma>) = Some v" by (simp add:HV')
