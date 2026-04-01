@@ -780,6 +780,7 @@ inductive red_custom_stmt :: "('a val, field_ident \<rightharpoonup> 'a val set)
 (* | RedLabel: "red_custom_stmt \<Delta> (Label l) \<omega> {set_trace \<omega> ((get_trace \<omega>)(l \<mapsto> get_state \<omega>)) }" *)
 
 inductive_cases red_custom_stmt_FieldAssign[elim!]: "red_custom_stmt \<Delta> (FieldAssign r f e) \<omega> S"
+inductive_cases red_custom_stmt_Runtime[elim!]: "red_custom_stmt \<Delta> (Runtime rtc) \<omega> S"
 (* inductive_cases red_custom_stmt_Label[elim!]: "red_custom_stmt \<Delta> (Label l) \<omega> S" *)
 
 
@@ -897,21 +898,23 @@ lemma SL_proof_Runtime_easy:
 proof -
   let ?A = "Stabilize (snd ` SA)"
 
-  have r:  "\<And>\<alpha> hl rtcp perm. \<alpha> \<in> SA \<Longrightarrow> 
-      ((rtc_cond rtc) (get_store (snd \<alpha>)) = Some (VBool True) \<and>
+  have r:  "\<And>\<alpha>. \<alpha> \<in> SA \<Longrightarrow> 
+      (\<exists> hl rtcp perm. (rtc_cond rtc) (get_store (snd \<alpha>)) = Some (VBool True) \<and>
       (rtc_exp rtc) (get_store (snd \<alpha>)) = Some (VRef (Address hl)) \<and>
       rtc_perm rtc = RTCPerm rtcp \<and>
       rtcp (get_store (snd \<alpha>)) = Some (VPerm perm) \<and>
       to_preal perm \<le> get_m (snd \<alpha>) (hl, rtc_field rtc))
     \<or> ((rtc_cond rtc) (get_store (snd \<alpha>)) = Some (VBool False))
-    \<or> ((rtc_cond rtc) (get_store (snd \<alpha>)) = Some (VBool True) \<and>
+    \<or> (\<exists> hl rtcp perm. (rtc_cond rtc) (get_store (snd \<alpha>)) = Some (VBool True) \<and>
       (rtc_exp rtc) (get_store (snd \<alpha>)) = Some (VRef (Address hl)) \<and>
       rtc_perm rtc = RTCPerm rtcp \<and>
       rtcp (get_store (snd \<alpha>)) = Some (VEpsilon) \<and>
       0 < get_m (snd \<alpha>) (hl, rtc_field rtc))"
     using assms(1)
-    
-    (*apply (erule red_custom_stmt.induct)*)
+    apply (drule bspec)
+    apply (erule red_custom_stmt_Runtime)
+      apply (simp+)
+    done
 
   have "SL_Custom \<Delta> ?A (custom.Runtime rtc) ?A"
   proof (rule RuleRuntime)
@@ -933,8 +936,53 @@ proof -
     fix \<omega> assume "\<omega> \<in> Stabilize (snd ` SA)"
       then obtain \<alpha> where "\<alpha> \<in> SA" "stabilize \<omega> = snd \<alpha>"
         by (meson imageE in_Stabilize)
-      
-    oops
+      then obtain hl rtcp perm where "(rtc_cond rtc (get_store (stabilize \<omega>)) = Some (VBool True) \<and>
+                   rtc_exp rtc (get_store (stabilize \<omega>)) = Some (VRef (Address hl)) \<and>
+                   rtc_perm rtc = RTCPerm rtcp \<and>
+                   rtcp (get_store (stabilize \<omega>)) = Some (VPerm perm) \<and>
+                   to_preal perm \<le> get_m (stabilize \<omega>) (hl, rtc_field rtc) \<or>
+                   rtc_cond rtc (get_store (stabilize \<omega>)) = Some (VBool False) \<or>
+                   rtc_cond rtc (get_store (stabilize \<omega>)) = Some (VBool True) \<and>
+                   rtc_exp rtc (get_store (stabilize \<omega>)) = Some (VRef (Address hl)) \<and>
+                   rtc_perm rtc = RTCPerm rtcp \<and>
+                   rtcp (get_store (stabilize \<omega>)) = Some VEpsilon \<and> 0 < get_m (stabilize \<omega>) (hl, rtc_field rtc))"
+        by (metis r)
+      then have "(rtc_cond rtc (get_store \<omega>) = Some (VBool True) \<and>
+                   rtc_exp rtc (get_store \<omega>) = Some (VRef (Address hl)) \<and>
+                   rtc_perm rtc = RTCPerm rtcp \<and>
+                   rtcp (get_store \<omega>) = Some (VPerm perm) \<and>
+                   to_preal perm \<le> get_m \<omega> (hl, rtc_field rtc) \<or>
+                   rtc_cond rtc (get_store \<omega>) = Some (VBool False) \<or>
+                   rtc_cond rtc (get_store \<omega>) = Some (VBool True) \<and>
+                   rtc_exp rtc (get_store \<omega>) = Some (VRef (Address hl)) \<and>
+                   rtc_perm rtc = RTCPerm rtcp \<and>
+                   rtcp (get_store \<omega>) = Some VEpsilon \<and> 0 < get_m \<omega> (hl, rtc_field rtc))"
+        using get_store_stabilize by force
+      then show "\<omega> \<in> {\<omega> | \<omega> hl rtcp perm.
+        ((rtc_cond rtc) (get_store \<omega>) = Some (VBool True) \<and>
+        (rtc_exp rtc) (get_store \<omega>) = Some (VRef (Address hl)) \<and>
+        rtc_perm rtc = RTCPerm rtcp \<and>
+        rtcp (get_store \<omega>) = Some (VPerm perm) \<and>
+        to_preal perm \<le> get_m \<omega> (hl, rtc_field rtc))
+      \<or> ((rtc_cond rtc) (get_store \<omega>) = Some (VBool False))
+      \<or> ((rtc_cond rtc) (get_store \<omega>) = Some (VBool True) \<and>
+        (rtc_exp rtc) (get_store \<omega>) = Some (VRef (Address hl)) \<and>
+        rtc_perm rtc = RTCPerm rtcp \<and>
+        rtcp (get_store \<omega>) = Some (VEpsilon) \<and>
+        0 < get_m \<omega> (hl, rtc_field rtc))}"
+        by blast
+    qed
+  qed
+  moreover have "\<And>\<omega>. \<omega> \<in> SA \<Longrightarrow> f \<omega> = {snd \<omega>}"
+    using assms(1)
+    apply (drule bspec)
+    apply (erule red_custom_stmt_Runtime)
+      apply (simp+)
+    done
+  ultimately show ?thesis
+    by (metis (no_types, lifting) SUP_cong UNION_singleton_eq_range)
+qed
+  
 
 lemma SL_proof_aux_custom:
   assumes "\<forall>\<omega>\<in>SA. red_custom_stmt \<Delta> C (snd \<omega>) (f \<omega>)"
@@ -947,8 +995,8 @@ proof (cases C)
     using SL_proof_FieldAssign_easy assms by blast
 next
   case (Runtime rtcs)
-  then show ?thesis sorry
-    (*using SL_proof_Runtime_easy assms by blast*)
+  then show ?thesis
+    using SL_proof_Runtime_easy assms by blast
 qed
 
 lemma custom_reciprocal:
