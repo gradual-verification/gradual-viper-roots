@@ -783,7 +783,6 @@ inductive_cases red_custom_stmt_FieldAssign[elim!]: "red_custom_stmt \<Delta> (F
 inductive_cases red_custom_stmt_Runtime[elim!]: "red_custom_stmt \<Delta> (Runtime rtc) \<omega> S"
 (* inductive_cases red_custom_stmt_Label[elim!]: "red_custom_stmt \<Delta> (Label l) \<omega> S" *)
 
-
 lemma SL_proof_FieldAssign_easy:
   assumes "\<forall>\<omega>\<in>SA. red_custom_stmt \<Delta> (FieldAssign r g e) (snd \<omega>) (f \<omega>)"
       and "wf_custom_stmt \<Delta> (FieldAssign r g e)"
@@ -1019,8 +1018,26 @@ proof (induct rule: SL_Custom.induct)
   then show "\<exists>S. red_custom_stmt \<Delta> (custom.FieldAssign r f e) \<omega> S \<and> S \<subseteq> update_value \<Delta> A r f e"
     by (metis (no_types, lifting) RuleFieldAssign.prems(1) \<open>custom_context \<Delta> f = Some ty\<close> \<open>e \<omega> = Some v\<close> \<open>r \<omega> = Some hl\<close> \<open>v \<in> ty\<close> in_update_value option.inject singletonD subsetI typed_value_def)
 next
-  case (RuleRuntime)
-  show ?case sorry
+  case (RuleRuntime A rtc \<Delta>)
+  then obtain hl rtcp perm where "(rtc_cond rtc (get_store \<omega>) = Some (VBool True) \<and>
+                   rtc_exp rtc (get_store \<omega>) = Some (VRef (Address hl)) \<and>
+                   rtc_perm rtc = RTCPerm rtcp \<and>
+                   rtcp (get_store \<omega>) = Some (VPerm perm) \<and>
+                   to_preal perm \<le> get_m \<omega> (hl, rtc_field rtc) \<or>
+                   rtc_cond rtc (get_store \<omega>) = Some (VBool False) \<or>
+                   rtc_cond rtc (get_store \<omega>) = Some (VBool True) \<and>
+                   rtc_exp rtc (get_store \<omega>) = Some (VRef (Address hl)) \<and>
+                   rtc_perm rtc = RTCPerm rtcp \<and>
+                   rtcp (get_store \<omega>) = Some VEpsilon \<and> 0 < get_m \<omega> (hl, rtc_field rtc))"
+    by (smt (verit, ccfv_SIG) CollectD entails_def framed_by_expE subset_iff)
+  then have "red_custom_stmt \<Delta> (custom.Runtime rtc) \<omega> {\<omega>}"
+    using RedRuntime1[of rtc \<omega> hl rtcp perm \<Delta>] 
+          RedRuntime2[of rtc \<omega>] 
+          RedRuntimeEps[of rtc \<omega> hl rtcp]
+    by fastforce
+  then show "\<exists>S. red_custom_stmt \<Delta> (custom.Runtime rtc) \<omega> S \<and> S \<subseteq> A"
+    using RuleRuntime.prems subsetI singletonD
+    by (metis)
 qed
 
 lemma red_custom_stable:
