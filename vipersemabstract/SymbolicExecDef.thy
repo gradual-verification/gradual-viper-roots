@@ -282,7 +282,10 @@ record 'a runtime_check_acc =
 
 type_synonym 'a runtime_check = (*RTCExp "'a sym_exp" | RTCAcc*) "'a runtime_check_acc"
 
-datatype 'a rtc_stmt = Stmt "'a runtime_check list" | Seq "'a rtc_stmt \<times> 'a rtc_stmt"
+datatype 'a rtc_stmt = 
+  Stmt "'a runtime_check list"
+  | Seq "'a rtc_stmt \<times> 'a rtc_stmt"
+  | If "'a rtc_stmt \<times> 'a rtc_stmt \<times> 'a rtc_stmt"
 
 record 'a sym_state =
   sym_store :: "'a sym_store"
@@ -309,6 +312,9 @@ definition rtc_and :: "'a ret_typ \<Rightarrow> 'a ret_typ \<Rightarrow> 'a ret_
 
 definition rtc_seq :: "'a ret_typ \<Rightarrow> 'a ret_typ \<Rightarrow> 'a ret_typ" where
 "rtc_seq rt1 rt2 = ((fst rt1) \<and> (fst rt2), Seq (snd rt1, snd rt2))"
+
+definition rtc_if :: " 'a ret_typ \<Rightarrow> 'a ret_typ \<Rightarrow> 'a ret_typ \<Rightarrow> 'a ret_typ" where
+"rtc_if rt1 rt2 rt3 = ((fst rt1) \<and> (fst rt2), If (snd rt1, snd rt2, snd rt3))"
 
 definition rtc_add :: "'a runtime_check \<Rightarrow> 'a rtc_stmt \<Rightarrow> 'a rtc_stmt" where
 "rtc_add rtc st =
@@ -795,7 +801,7 @@ fun sexec :: "'a sym_state \<Rightarrow> stmt \<Rightarrow> ('a sym_state \<Righ
 | "sexec \<sigma> (stmt.Assert A) Q = sfail (''Not supported statement: Assert'')"
 | "sexec \<sigma> (stmt.Assume A) Q = sfail (''Not supported statement: Assume'')"
 | "sexec \<sigma> (stmt.If e s1 s2) Q = 
-    sexec_exp \<sigma> e (\<lambda> \<sigma> t. rtc_seq (sexec (sym_cond_add \<sigma> t) s1 Q) (sexec (sym_cond_add \<sigma> (\<not>\<^sub>s t)) s2 Q))"
+    sexec_exp \<sigma> e (\<lambda> \<sigma> t. rtc_if (True, sym_runtime \<sigma>) (sexec (sym_cond_add \<sigma> t) s1 Q) (sexec (sym_cond_add \<sigma> (\<not>\<^sub>s t)) s2 Q))"
 | "sexec \<sigma> (stmt.Seq s1 s2) Q = sexec \<sigma> s1 (\<lambda> \<sigma>. rtc_seq (True, sym_runtime \<sigma>) (sexec \<sigma> s2 Q))"
 | "sexec \<sigma> (stmt.LocalAssign v e) Q = (if sym_store \<sigma> v \<noteq> None then
     (sexec_exp \<sigma> e (\<lambda> \<sigma> t. Q (\<sigma>\<lparr>sym_store := (sym_store \<sigma>)(v \<mapsto> t) \<rparr>))) else (False, Stmt []))"
