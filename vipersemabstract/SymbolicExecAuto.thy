@@ -34,7 +34,6 @@ named_theorems sexec_simp
 lemmas [sexec_simp] =
   sym_gen_fresh_def
   shift_and_add_def
-  rtc_seq_def
   rtc_and_def
   Let_def
   sym_exp_p_acc_helper_def
