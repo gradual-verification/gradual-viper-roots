@@ -172,6 +172,11 @@ record program =
   declared_fields :: "field_ident \<rightharpoonup> vtyp"
   domains :: nat (* TODO *)
 
+fun line_count :: "stmt \<Rightarrow> nat" where
+  "line_count (Seq s1 s2) = line_count s1 + line_count s2"
+| "line_count (If _ s1 s2) = 1 + line_count s1 + line_count s2"
+| "line_count _ = 1"
+
 (* well-formed program:
 - Method calls are well-formed (method exists, right number of args and return, right types
 - Same for functions calls

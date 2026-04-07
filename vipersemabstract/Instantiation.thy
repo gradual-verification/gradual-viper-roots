@@ -1245,14 +1245,32 @@ fun compile (* :: "('a, 'a virtual_state) interp \<Rightarrow> (field_name \<rig
 
 | "compile \<Delta> F (stmt.FieldAssign r f e) = abs_stmt.Custom (FieldAssign (make_semantic_rexp \<Delta> r) f (make_semantic_exp \<Delta> e))"
 
+fun compile_with_rtcs_helper where
+  "compile_with_rtcs_helper [] abs_st = abs_st"
+| "compile_with_rtcs_helper (rtc # rtcs) abs_st = 
+    abs_stmt.Seq (abs_stmt.Custom (Runtime rtc)) (compile_with_rtcs_helper rtcs abs_st)"
+
 fun compile_with_rtcs where
-  "compile_with_rtcs \<Delta> F st (rtc_stmt.Stmt []) = compile \<Delta> F st"
+  "compile_with_rtcs \<Delta> F (stmt.Seq s1 s2) rtc_prog = 
+    abs_stmt.Seq 
+      (compile_with_rtcs \<Delta> F s1 (take (line_count s1) rtc_prog)) 
+      (compile_with_rtcs \<Delta> F s1 (drop (line_count s1) rtc_prog))"
+| "compile_with_rtcs \<Delta> F (stmt.If e s1 s2) (rtcs # rtc_prog) =
+    compile_with_rtcs_helper rtcs
+      (abs_stmt.If (make_semantic_bexp \<Delta> e)
+        (compile_with_rtcs \<Delta> F s1 (take (line_count s1) rtc_prog))
+        (compile_with_rtcs \<Delta> F s2 (drop (line_count s2) rtc_prog)))"
+| "compile_with_rtcs \<Delta> F st [rtcs] = 
+    compile_with_rtcs_helper rtcs (compile \<Delta> F st)"
+| "compile_with_rtcs \<Delta> F st _ = undefined"
+
+(*|  "compile_with_rtcs \<Delta> F st (rtc_stmt.Stmt []) = compile \<Delta> F st"
 | "compile_with_rtcs \<Delta> F st (rtc_stmt.Stmt (rtc # rtcs)) = 
     abs_stmt.Seq (abs_stmt.Custom (Runtime rtc)) 
       (compile_with_rtcs \<Delta> F st (rtc_stmt.Stmt rtcs))"
 | "compile_with_rtcs \<Delta> F (stmt.Seq C1 C2) (rtc_stmt.Seq (st1, st2)) =
      abs_stmt.Seq (compile_with_rtcs \<Delta> F C1 st1) (compile_with_rtcs \<Delta> F C2 st2)"
-| "compile_with_rtcs \<Delta> F _ _ = undefined"
+| "compile_with_rtcs \<Delta> F _ _ = undefined"*)
 
 
 section \<open>red_stmt with (overapproximating) postcondition\<close>
