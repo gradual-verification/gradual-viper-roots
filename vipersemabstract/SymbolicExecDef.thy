@@ -60,7 +60,7 @@ lemma eval_binop_And_eq_True :
   by (cases v1; cases v2; auto)
 
 lemma eval_binop_Eq_eq_True :
-  assumes "v1 \<noteq> VEpsilon \<and> v2 \<noteq> VEpsilon"
+  assumes "v1 \<noteq> VEpsilon \<or> v2 \<noteq> VEpsilon"
   shows "eval_binop v1 Eq v2 = BinopNormal (VBool True) \<longleftrightarrow> v1 = v2"
   using assms by (cases v1; cases v2; auto)
 
@@ -74,6 +74,10 @@ lemma eval_binop_Lt_perm_r_eq_True :
 
 lemma eval_binop_Lte_perm_r_eq_True :
   "eval_binop v1 Lte (VPerm p) = BinopNormal (VBool True) \<longleftrightarrow> (\<exists> p1. v1 = VPerm p1 \<and> p1 \<le> p)"
+  by (cases v1; auto)
+
+lemma eval_binop_sym_Lte_perm_r_eq_True :
+  "eval_binop (VPerm p) Lte v1 = BinopNormal (VBool True) \<longleftrightarrow> (\<exists> p1. v1 = VPerm p1 \<and> p \<le> p1)"
   by (cases v1; auto)
 
 section \<open>def\<close>
@@ -410,9 +414,12 @@ definition sym_stabilize :: "'a sym_state \<Rightarrow> ('a sym_state \<Rightarr
     then (Q \<sigma>') else (False, []))"
 
 definition sym_heap_extract :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> 'a sym_exp option \<Rightarrow> ('a sym_state \<Rightarrow> 'a chunk \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
-"sym_heap_extract \<sigma> te f p Q = sym_consolidate \<sigma> (\<lambda> \<sigma>'. (let (c, cs) = SOME (c, cs). sym_heap \<sigma>' = c # cs \<and> chunk_field c = f \<and>
-   (sym_cond \<sigma>' \<turnstile>\<^sub>s te =\<^sub>s chunk_recv c \<and>\<^sub>s 
-    (case p of Some tp \<Rightarrow> SPerm 0 \<le>\<^sub>s tp \<and>\<^sub>s tp \<le>\<^sub>s chunk_perm c | None \<Rightarrow> SPerm 0 <\<^sub>s chunk_perm c)) in Q (\<sigma>'\<lparr> sym_heap := cs \<rparr>) c))"
+"sym_heap_extract \<sigma> te f p Q = sym_consolidate \<sigma> (\<lambda> \<sigma>'. 
+  if \<exists> c cs. (sym_heap \<sigma>' = c # cs \<and> chunk_field c = f \<and> (sym_cond \<sigma>' \<turnstile>\<^sub>s te =\<^sub>s chunk_recv c \<and>\<^sub>s 
+    (case p of Some tp \<Rightarrow> SPerm 0 \<le>\<^sub>s tp \<and>\<^sub>s tp \<le>\<^sub>s chunk_perm c | None \<Rightarrow> SPerm 0 <\<^sub>s chunk_perm c))) then
+  (let (c, cs) = SOME (c, cs). sym_heap \<sigma>' = c # cs \<and> chunk_field c = f \<and> (sym_cond \<sigma>' \<turnstile>\<^sub>s te =\<^sub>s chunk_recv c \<and>\<^sub>s 
+    (case p of Some tp \<Rightarrow> SPerm 0 \<le>\<^sub>s tp \<and>\<^sub>s tp \<le>\<^sub>s chunk_perm c | None \<Rightarrow> SPerm 0 <\<^sub>s chunk_perm c)) in Q (\<sigma>'\<lparr> sym_heap := cs \<rparr>) c)
+  else (False, []))"
 
 definition sym_opheap_extract :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightarrow> field_name \<Rightarrow> 'a sym_exp option \<Rightarrow> ('a sym_state \<Rightarrow> 'a chunk \<Rightarrow> 'a ret_typ) \<Rightarrow> 'a ret_typ" where
 "sym_opheap_extract \<sigma> te f p Q = sym_consolidate \<sigma> (\<lambda> \<sigma>'. (let (c, cs) = SOME (c, cs). sym_opheap \<sigma>' = c # cs \<and> chunk_field c = f \<and>
@@ -816,10 +823,10 @@ fun sexec :: "'a sym_state \<Rightarrow> stmt \<Rightarrow> ('a sym_state \<Righ
 | "sexec \<sigma> (stmt.If e s1 s2) Q = 
     sexec_exp \<sigma> e (\<lambda> \<sigma> t. 
       rtc_and 
-        (sexec (sym_line_inc (sym_cond_add \<sigma> t) 1) s1 Q) 
+        (sexec (sym_line_inc (sym_cond_add \<sigma> t) 1) s1 (\<lambda> \<sigma>. Q (sym_line_inc \<sigma> (line_count s2)))) 
         (sexec (sym_line_inc (sym_cond_add \<sigma> (\<not>\<^sub>s t)) (line_count s1 + 1)) s2 Q))"
 | "sexec \<sigma> (stmt.Seq s1 s2) Q = 
-    sexec \<sigma> s1 (\<lambda> \<sigma>. sexec (sym_line_inc \<sigma> (line_count s1 + 1)) s2 Q)"
+    sexec \<sigma> s1 (\<lambda> \<sigma>. sexec (sym_line_inc \<sigma> 1) s2 Q)"
 | "sexec \<sigma> (stmt.LocalAssign v e) Q = (if sym_store \<sigma> v \<noteq> None 
     then sexec_exp \<sigma> e (\<lambda> \<sigma> t. Q (\<sigma>\<lparr>sym_store := (sym_store \<sigma>)(v \<mapsto> t) \<rparr>))
     else (False, []))"

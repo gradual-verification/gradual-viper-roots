@@ -269,14 +269,14 @@ proof (rule HP)
 qed
 
 lemma sym_consolidate_soundE :
-  assumes "sym_consolidate \<sigma> Q"
+  assumes "fst (sym_consolidate \<sigma> Q)"
   assumes "\<omega> \<succeq> s2a_state V (sym_store \<sigma>) (sym_heap \<sigma>)"
   assumes "s2a_state_wf \<Lambda> F V \<sigma>"
   assumes HP: "\<And> \<sigma>'.
     \<omega> \<succeq> s2a_state V (sym_store \<sigma>') (sym_heap \<sigma>') \<Longrightarrow>
     s2a_state_wf \<Lambda> F V \<sigma>' \<Longrightarrow>
     sym_used \<sigma>' = sym_used \<sigma> \<Longrightarrow>
-    Q \<sigma>' \<Longrightarrow>
+    fst (Q \<sigma>') \<Longrightarrow>
     P"
   shows "P"
   using assms(1-3) apply (clarsimp simp add:s2a_state_wf_def s2a_heap_wf_def s2a_state_indep_def)
@@ -321,19 +321,20 @@ lemma s2a_sym_implies_soundE :
   using assms unfolding sym_implies_def s2a_state_wf_def by blast
 
 lemma sym_stabilize_soundE :
-  assumes "sym_stabilize \<sigma> Q"
+  assumes "fst (sym_stabilize \<sigma> Q)"
   assumes "\<omega> \<succeq> s2a_state V (sym_store \<sigma>) (sym_heap \<sigma>)"
   assumes "s2a_state_wf \<Lambda> F V \<sigma>"
   assumes HP:"\<And> \<sigma>'.
     stabilize \<omega> \<succeq> s2a_state V (sym_store \<sigma>') (sym_heap \<sigma>') \<Longrightarrow>
     s2a_state_wf \<Lambda> F V \<sigma>' \<Longrightarrow>
     sym_used \<sigma>' = sym_used \<sigma> \<Longrightarrow>
-    Q \<sigma>' \<Longrightarrow>
+    fst (Q \<sigma>') \<Longrightarrow>
     P"
   shows "P"
   using assms(1-3)
   apply (simp add:sym_stabilize_def)
   apply (erule (2) sym_consolidate_soundE)
+  apply (simp add: if_split_asm)
   apply (clarsimp)
   apply (rule HP; simp?)
   apply (clarsimp simp add:greater_charact_equi)
@@ -412,8 +413,14 @@ proof -
   qed
 qed
 
+lemma some_pair : 
+  "P z w \<Longrightarrow> ((SOME (x,y). z = x \<and> w = y \<and> P x y) = (z, w))"
+  apply (rule some_equality)
+   apply (blast+)
+  done
+
 lemma sym_heap_extract_soundE :
-  assumes "sym_heap_extract \<sigma> t f po Q"
+  assumes "fst (sym_heap_extract \<sigma> t f po Q)"
   assumes "\<omega> \<succeq> s2a_state V (sym_store \<sigma>) (sym_heap \<sigma>)"
   assumes "s2a_state_wf \<Lambda> F V \<sigma>"
   assumes "F f = Some ty"
@@ -432,13 +439,15 @@ lemma sym_heap_extract_soundE :
      valu_indep (sym_used \<sigma>) (\<lambda>V. (chunk_recv c V, chunk_perm c V, chunk_val c V)) \<Longrightarrow>
      v \<in> sem_vtyp def_domains ty \<Longrightarrow>
      sym_used \<sigma>' = sym_used \<sigma> \<Longrightarrow>
-     Q \<sigma>' c \<Longrightarrow>
+     fst (Q \<sigma>' c) \<Longrightarrow>
      P"
   shows "P"
   using assms(1-4)
   apply (clarsimp simp add:sym_heap_extract_def)
   apply (erule (2) sym_consolidate_soundE)
+  apply (simp add: if_split_asm)
   apply (clarsimp)
+  apply (simp add: some_pair)
   apply (erule (1) s2a_sym_implies_soundE)
   apply (clarsimp simp add:SBinop_eq_Some eval_binop_And_eq_True eval_binop_Eq_eq_True)
   apply (erule (2) s2a_heap_consE)
@@ -449,9 +458,21 @@ lemma sym_heap_extract_soundE :
           apply (simp)
          apply (simp)
   subgoal
-    by (cases po; clarsimp simp add:SBinop_eq_Some Abs_preal_inverse
-         eval_binop_Lt_perm_r_eq_True eval_binop_Lte_perm_r_eq_True eval_binop_And_eq_True SLit_def)
-       apply (simp add:less_eq_preal.rep_eq Abs_preal_inverse one_preal.rep_eq)
+    apply (cases po)
+     apply (clarsimp)
+     apply (simp add: eval_binop_Eq_eq_True)
+    apply (clarsimp)
+    apply (simp add: eval_binop_Eq_eq_True)
+      (*apply (simp add:SBinop_eq_Some Abs_preal_inverse eval_binop_Eq_eq_True
+         eval_binop_Lt_perm_r_eq_True eval_binop_Lte_perm_r_eq_True eval_binop_And_eq_True SLit_def)*)
+    done
+  subgoal
+    apply (cases po)
+     apply (simp add:less_eq_preal.rep_eq Abs_preal_inverse one_preal.rep_eq SBinop_eq_Some SLit_def)
+    apply (simp add:less_eq_preal.rep_eq Abs_preal_inverse one_preal.rep_eq SBinop_eq_Some)
+    apply (simp add: SLit_def eval_binop_And_eq_True eval_binop_Lte_perm_r_eq_True eval_binop_sym_Lte_perm_r_eq_True)
+    apply (fastforce)
+    done
       apply (simp)
      apply (simp)
     apply (simp add:Abs_preal_inverse)
