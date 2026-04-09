@@ -64,6 +64,11 @@ lemma eval_binop_Eq_eq_True :
   shows "eval_binop v1 Eq v2 = BinopNormal (VBool True) \<longleftrightarrow> v1 = v2"
   using assms by (cases v1; cases v2; auto)
 
+lemma eval_binop_Eq_eq_True1 :
+  assumes "v2 \<noteq> VEpsilon"
+  shows "eval_binop v1 Eq v2 = BinopNormal (VBool True) \<longleftrightarrow> v1 = v2"
+  using assms by (cases v1; cases v2; auto)
+
 lemma eval_binop_Lt_perm_l_eq_True :
   "eval_binop (VPerm p) Lt v = BinopNormal (VBool True) \<longleftrightarrow> (\<exists> p2. v = VPerm p2 \<and> p < p2)"
   by (cases v; auto)

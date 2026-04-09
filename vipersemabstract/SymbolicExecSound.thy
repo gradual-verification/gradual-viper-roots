@@ -473,9 +473,13 @@ lemma sym_heap_extract_soundE :
     apply (simp add: SLit_def eval_binop_And_eq_True eval_binop_Lte_perm_r_eq_True eval_binop_sym_Lte_perm_r_eq_True)
     apply (fastforce)
     done
-      apply (simp)
-     apply (simp)
-    apply (simp add:Abs_preal_inverse)
+       apply (simp add: less_eq_preal.rep_eq Abs_preal_inverse one_preal.rep_eq)
+  subgoal
+    apply (clarsimp)
+    apply (simp add: eval_binop_Eq_eq_True)
+    done
+    apply (simp)
+   apply (simp add:Abs_preal_inverse)
    apply (simp)
   apply (simp)
   done
@@ -536,7 +540,7 @@ qed
 
 
 lemma sym_heap_do_add_soundE :
-  assumes "sym_heap_do_add \<sigma> c Q"
+  assumes "fst (sym_heap_do_add \<sigma> c Q)"
   assumes "\<omega> \<succeq> s2a_state V (sym_store \<sigma>) (sym_heap \<sigma>)"
   assumes "s2a_state_wf \<Lambda> F V \<sigma>"
   assumes "chunk_recv c V = Some (VRef (Address a))"
@@ -550,7 +554,7 @@ lemma sym_heap_do_add_soundE :
     set_state \<omega> (add_perm (get_state \<omega>) (a, chunk_field c) (Abs_preal p) v) \<succeq> s2a_state V (sym_store \<sigma>') (sym_heap \<sigma>') \<Longrightarrow>
     s2a_state_wf \<Lambda> F V \<sigma>' \<Longrightarrow>
     sym_used \<sigma>' = sym_used \<sigma> \<Longrightarrow>
-    Q \<sigma>' \<Longrightarrow>
+    fst (Q \<sigma>') \<Longrightarrow>
     P"
   shows "P"
   using assms(1)
@@ -562,14 +566,14 @@ lemma sym_heap_do_add_soundE :
 subsection \<open>sexec_exp sound\<close>
 
 lemma sexec_exp_sound :
-  assumes "sexec_exp \<sigma> e Q"
+  assumes "fst (sexec_exp \<sigma> e Q)"
   assumes "\<omega> \<succeq> s2a_state V (sym_store \<sigma>) (sym_heap \<sigma>)"
   assumes "s2a_state_wf \<Lambda> F V \<sigma>"
   assumes "pure_exp_typing (fields_to_prog F) \<Lambda> e ty"
   shows "\<exists> t v \<sigma>'. (def_interp \<turnstile> \<langle>e;\<omega>\<rangle> [\<Down>] Val v) \<and>
    s2a_state_wf \<Lambda> F V \<sigma>' \<and> \<omega> \<succeq> s2a_state V (sym_store \<sigma>') (sym_heap \<sigma>') \<and>
    t V = Some v \<and> v \<in> sem_vtyp def_domains ty \<and> valu_indep (sym_used \<sigma>) t \<and>
-   sym_used \<sigma>' = sym_used \<sigma> \<and> Q \<sigma>' t"
+   sym_used \<sigma>' = sym_used \<sigma> \<and> fst (Q \<sigma>' t)"
   using assms
 proof (induction e arbitrary:\<sigma> Q V ty)
   case (ELit x)
@@ -626,7 +630,7 @@ next
          apply ((rule exI conjI disjI2)+)
           apply (assumption)
          apply (simp add:eval_bool_binop_lazy_bool)
-        by auto
+        (*by auto*)
       done
     done
 next
@@ -660,7 +664,7 @@ next
     apply (erule (3) sym_heap_extract_soundE)
     apply (clarsimp simp add:SLit_def)
     apply (erule (6) sym_heap_do_add_soundE; simp add:preal_to_real)
-    subgoal using get_vm_bound preal_to_real by metis
+    subgoal using get_vm_bound preal_to_real (*by metis*)
     subgoal by (simp add:compatible_partial_functions_singleton defined_val)
     apply (safe del:exI intro!:exI; assumption?; (simp add:valu_indep_pair add_perm_del_perm preal_to_real)?)
     done
