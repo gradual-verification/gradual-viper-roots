@@ -387,7 +387,7 @@ definition sym_imprecise_rtc :: "'a sym_state \<Rightarrow> 'a sym_exp \<Rightar
       sym_runtime := 
         list_update (sym_runtime \<sigma>) (sym_line \<sigma>) 
         ((\<lparr> rtc_field = f, 
-          rtc_exp = te, 
+          rtc_exp = te,
           rtc_perm = RTCEpsilon,
           rtc_cond = sym_cond \<sigma> \<rparr>) # (nth (sym_runtime \<sigma>) (sym_line \<sigma>))) \<rparr>) te)
   in (sym_imprecise \<sigma> \<and> fst p, snd p))"
@@ -668,7 +668,8 @@ fun sexec_exp :: "'a sym_state \<Rightarrow> pure_exp \<Rightarrow> ('a sym_stat
   where
   "sexec_exp \<sigma> (ELit l) Q = Q \<sigma> (SLit l)"
 
-| "sexec_exp \<sigma> (Var x) Q = (let t = SOME t. sym_store \<sigma> x = Some t in Q \<sigma> t)"
+| "sexec_exp \<sigma> (Var x) Q = 
+    (if \<exists> t. sym_store \<sigma> x = Some t then Q \<sigma> (SOME t. sym_store \<sigma> x = Some t) else (False, []))"
 
 | "sexec_exp \<sigma> (Unop op e) Q = sexec_exp \<sigma> e (\<lambda> \<sigma> t. Q \<sigma> (SUnop op t))"
 

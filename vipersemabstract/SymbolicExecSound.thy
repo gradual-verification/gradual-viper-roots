@@ -585,7 +585,7 @@ proof (induction e arbitrary:\<sigma> Q V ty)
 next
   case (Var x)
   then show ?case
-    apply (simp add:red_pure_simps pure_exp_typing_simps greater_state_has_greater_parts(1))
+    apply (simp add:red_pure_simps pure_exp_typing_simps greater_state_has_greater_parts(1) if_split_asm)
     apply (clarsimp)
     apply (frule (2) s2a_state_wf_store)
     apply (safe del:exI intro!:exI; assumption?; simp)
@@ -612,12 +612,12 @@ next
       apply (safe del:exI intro!:exI disjI2; assumption?)
       by (simp add:SBinop_eq_Some)+
     subgoal for _ _ a (* lazy binop *)
-      apply (clarsimp simp add:binop_lazy_bool_binop_type)
+      apply (clarsimp simp add:binop_lazy_bool_binop_type rtc_and_def)
       apply (case_tac "a = ba"; simp)
       subgoal
         apply (rule exI, rule exI, rule conjI)
          apply (rule disjI1, rule exI, rule conjI, assumption)
-         apply (simp add:SLit_def SBinop_eq_Some eval_binop_lazy_binop_lazy_bool)
+         apply (simp add:SLit_def SBinop_eq_Some eval_binop_lazy_binop_lazy_bool rtc_and_def)
         by (safe del: exI intro!:exI; assumption?; simp add:SLit_def SBinop_eq_Some eval_binop_lazy_binop_lazy_bool)
       subgoal
         apply (drule Binop.IH(2))
@@ -630,7 +630,7 @@ next
          apply ((rule exI conjI disjI2)+)
           apply (assumption)
          apply (simp add:eval_bool_binop_lazy_bool)
-        (*by auto*)
+        by auto
       done
     done
 next
