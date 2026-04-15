@@ -636,7 +636,7 @@ next
 next
   case (CondExp e1 e2 e3)
   from CondExp.prems show ?case
-    apply (clarsimp simp add:red_pure_simps pure_exp_typing_simps)
+    apply (clarsimp simp add:red_pure_simps pure_exp_typing_simps rtc_and_def)
     apply (drule (3) CondExp.IH(1))
     apply (clarsimp)
     apply (case_tac "b"; simp)
@@ -658,15 +658,20 @@ next
 next
   case (FieldAcc e x2a)
   from FieldAcc.prems show ?case
-    apply (clarsimp simp add:red_pure_simps pure_exp_typing_simps)
+    apply (clarsimp simp add:red_pure_simps pure_exp_typing_simps sym_exp_acc_helper_def rtc_or_def)
     apply (drule (3) FieldAcc.IH(1))
     apply (clarsimp)
-    apply (erule (3) sym_heap_extract_soundE)
+    apply (erule disjE)
+     apply (erule sym_heap_extract_soundE)
+        apply (simp+)
+    apply (simp add: fields_to_prog_def)
     apply (clarsimp simp add:SLit_def)
     apply (erule (6) sym_heap_do_add_soundE; simp add:preal_to_real)
-    subgoal using get_vm_bound preal_to_real (*by metis*)
+    subgoal using get_vm_bound preal_to_real by metis
     subgoal by (simp add:compatible_partial_functions_singleton defined_val)
-    apply (safe del:exI intro!:exI; assumption?; (simp add:valu_indep_pair add_perm_del_perm preal_to_real)?)
+    apply (simp add: fields_to_prog_def)
+     apply (safe del:exI intro!:exI; assumption?; (simp add:valu_indep_pair add_perm_del_perm preal_to_real)?)
+    apply (erule disjE)
     done
 qed (simp add:sfail_def)+
 
